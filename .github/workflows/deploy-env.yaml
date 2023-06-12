@@ -1,0 +1,350 @@
+name: Deploy Bunnyshell Environment
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: The Platform to execute on
+        type: string
+        default: ubuntu-latest
+      git-ref:
+        description: The Git ref to use
+        type: string
+        required: true
+      project-id:
+        description: The Bunnyshell Project to use
+        required: true
+        type: string
+      cluster-id:
+        description: The Bunnyshell Cluster to use
+        required: true
+        type: string
+      env-id:
+        description: The ID of the Environment
+        type: string
+      env-name:
+        description: The name of the Environment
+        type: string
+      allowed-users:
+        description: The list of the allowed usernames (JSON list). Use '*' for all users.
+        type: string
+      comment-on-pr:
+        description: Write PR comments
+        type: boolean
+        default: false
+      restricted-files:
+        description: File paths (glob patterns) that will prevent the environment from being automatically deployed.
+        type: string
+      deploy-as-stopped:
+        description: Deploy the environment and then stop it
+        type: boolean
+        default: false
+      bunnyshell-yaml-path:
+        description: Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required.
+        required: false
+        type: string
+      bunnyshell-yaml-contents:
+        description: Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required.
+        required: false
+        type: string
+      bunnyshell-cli-version:
+        description: The version of the Bunnyshell CLI to use
+        type: string
+        default: v0.16.0
+      use-app-token:
+        description: Use GitHub App token instead of the GitHub Actions token
+        type: boolean
+        default: false
+      app-id:
+        description: The ID of the GitHub App
+        type: string
+        default: 338154
+    secrets:
+      app-private-key:
+        description: The private key of the GitHub App
+      bunnyshell-access-token:
+        required: true
+    outputs:
+      env-id:
+        description: The ID of the Environment
+        value: ${{ jobs.deploy.outputs.envId }}
+      endpoints-json:
+        description: The environment endpoints as JSON
+        value: ${{ jobs.deploy.outputs.envEndpoints }}
+permissions:
+  pull-requests: write
+jobs:
+  checks:
+    name: Checks
+    runs-on: ${{ inputs.runs-on }}
+    if: ${{ github.event_name != 'issue_comment' || (
+        github.event.issue.pull_request
+        && contains(github.event.comment.body, '/bns:deploy')
+        && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
+      ) }}
+    steps:
+      - name: Check bunnyshell.yaml
+        if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
+        run: |
+          echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
+          exit 1
+      - name: Generate a token
+        id: generate-token
+        if: ${{ inputs.use-app-token }}
+        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
+        with:
+          app_id: ${{ inputs.app-id }}
+          private_key: ${{ secrets.app-private-key }}
+      - name: Comment PR Environment deploying
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.comment-on-pr }}
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          message: |
+            ### Bunnyshell Preview Environment deploying
+          comment_tag: deploy-${{ github.run_id }}
+          reactions: eyes
+      - name: Check approved deployment
+        env:
+          IS_APPROVED_DEPLOY_COMMAND: ${{ github.event.issue.pull_request
+              && contains(github.event.comment.body, '/bns:deploy')
+              && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
+            }}
+        run: |
+          echo "$IS_APPROVED_DEPLOY_COMMAND"
+          
+          if [ "$IS_APPROVED_DEPLOY_COMMAND" = "true" ]; then
+            echo "BNS_ENV_APPROVED=1" >> "$GITHUB_ENV"
+          fi
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        if: ${{ env.BNS_ENV_APPROVED != '1' }}
+        with:
+          fetch-depth: 0
+      - name: Get restricted files changes
+        id: changed-restricted-files
+        if: ${{ inputs.restricted-files != '' && env.BNS_ENV_APPROVED != '1' }}
+        uses: tj-actions/changed-files@v36
+        with:
+          files: ${{ inputs.restricted-files }}
+      - name: Comment PR Environment being created
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.comment-on-pr && steps.changed-restricted-files.outputs.any_modified == 'true' }}
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          message: |
+            ### Bunnyshell Preview Environment automatic creation skipped due to restricted files changes.
+            
+            Add a comment containing `/bns:deploy` to approve the creation of the environment.
+          comment_tag: deploy-${{ github.run_id }}
+          reactions: eyes
+      - name: Abort due to restricted files changes
+        if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
+        run: |
+          echo "Restricted files changes detected. Aborting."
+  
+          exit 1
+  deploy:
+    name: Deploy Environment
+    needs: checks
+    runs-on: ${{ inputs.runs-on }}
+    outputs:
+      envId: ${{ env.BNS_ENV_ID }}
+      envEndpoints: ${{ env.BNS_ENV_ENDPOINTS }}
+      envCreated: ${{ env.BNS_ENV_CREATED }}
+    steps:
+      - name: Generate a token
+        id: generate-token
+        if: ${{ inputs.use-app-token }}
+        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
+        with:
+          app_id: ${{ inputs.app-id }}
+          private_key: ${{ secrets.app-private-key }}
+      - name: setup-yq
+        uses: frenck/action-setup-yq@v1
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.git-ref }}
+          fetch-depth: 0
+      - name: Prepare vars
+        run: |
+          echo "BNS_GIT_SHA=`git rev-parse --short HEAD`" >> "$GITHUB_ENV"
+      - name: Search for Environment
+        uses: addnab/docker-run-action@v3
+        if: ${{ inputs.env-name != '' }}
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }} -v ${{ github.env }}:/github/envs.txt
+          run: |
+            set -e
+  
+            BNS_ENV_ID=`bns environments list --search "${{ inputs.env-name }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+              | jq -r "try ._embedded.item[0].id | select (.!=null)"`
+  
+            if [ -z "$BNS_ENV_ID" ]; then
+              echo "Could not find environment with name '${{ inputs.env-name }}'."
+            fi
+  
+            echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
+      - name: Check existing Environment
+        uses: addnab/docker-run-action@v3
+        if: ${{ inputs.env-id || env.BNS_ENV_ID }}
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: >
+            -e BUNNYSHELL_ENVIRONMENT=${{ inputs.env-id || env.BNS_ENV_ID }}
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -v ${{ github.env }}:/github/envs.txt
+          run: |
+            set -e
+  
+            echo "BNS_ENV_ID=`bns environments show --non-interactive -o json \
+              | jq -r 'try .id | select (.!=null)'`" >> /github/envs.txt
+      - name: Prepare bunnyshell.yaml
+        run: |
+          set -e
+
+          if [ "${{ inputs.bunnyshell-yaml-path }}" != "" ]; then
+            yq "(.components[] | select(.gitBranch != null)).gitBranch |= \"${{ env.BNS_GIT_SHA }}\"" ${{ inputs.bunnyshell-yaml-path }} > bunnyshell_wf_updated.yaml
+          else
+            echo "${{ inputs.bunnyshell-yaml-contents }}" > bunnyshell_wf_updated.yaml
+          fi
+      - name: Create Environment
+        uses: addnab/docker-run-action@v3
+        if: "${{ env.BNS_ENV_ID == '' }}"
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -v ${{ github.workspace }}:/work
+            -v ${{ github.env }}:/github/envs.txt
+          run: |
+            set -e
+  
+            echo "BNS_ENV_CREATED=1" >> /github/envs.txt
+  
+            CREATE_ENV_OUTPUT=`bns environments create --name "${{ inputs.env-name }}" --from-path /work/bunnyshell_wf_updated.yaml \
+              --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive -o json`
+            if [ "$?" != "0" ]; then
+              echo "Failed to create the environment: $CREATE_ENV_OUTPUT"
+              exit 1
+            fi
+  
+            echo "BNS_ENV_ID=`echo "$CREATE_ENV_OUTPUT" | jq -r '.id'`" >> /github/envs.txt
+      - name: Update Environment
+        uses: addnab/docker-run-action@v3
+        if: "${{ env.BNS_ENV_ID != '' }}"
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -e BUNNYSHELL_ENVIRONMENT=${{ env.BNS_ENV_ID }}
+            -v ${{ github.workspace }}:/work
+          run: |
+            bns environments update-configuration --from-path /work/bunnyshell_wf_updated.yaml --non-interactive -o stylish
+      - name: Deploy Environment
+        uses: addnab/docker-run-action@v3
+        if: "${{ env.BNS_ENV_ID != '' }}"
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -e BUNNYSHELL_ENVIRONMENT=${{ env.BNS_ENV_ID }}
+            -v ${{ github.env }}:/github/envs.txt
+          run: |
+            set -e
+  
+            bns environments deploy --non-interactive -o stylish
+  
+            ENDPOINTS_OUTPUT=`bns environments endpoints --non-interactive -o json`
+            
+            echo "BNS_ENV_ENDPOINTS=`echo $ENDPOINTS_OUTPUT | jq -c`" >> /github/envs.txt
+  
+            echo "ENDPOINTS_ROWS<<EOF" >> /github/envs.txt
+            echo "$ENDPOINTS_OUTPUT" | jq -r '.|map({name, endpoints: .endpoints| join("<br />")}) | .[] |  "|\(.name)|\(.endpoints)|"' >> /github/envs.txt
+            echo "EOF" >> /github/envs.txt
+      - name: Comment PR Environment deployed
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.comment-on-pr && github.event_name == 'issue_comment' }}
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          message: |
+            ### Bunnyshell Preview Environment deployed
+  
+            |Component|Endpoints|
+            |---------|---------|
+            ${{ env.ENDPOINTS_ROWS }}
+  
+            Available commands:
+            - `/bns:stop` to stop the environment
+            - `/bns:deploy` to redeploy the environment
+            - `/bns:delete` to remove the environment
+          comment_tag: deploy-${{ github.run_id }}
+          reactions: rocket
+      - name: Comment PR Environment deployment failed
+        if: ${{ failure() && inputs.comment-on-pr }}
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          message: |
+            ### Bunnyshell Preview Environment deployment failed
+  
+            Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
+  
+            Available commands:
+            - `/bns:deploy` to redeploy the environment
+            - `/bns:delete` to remove the environment
+          comment_tag: deploy-${{ github.run_id }}
+          reactions: confused
+  stop:
+    name: Stop Environment
+    runs-on: ${{ inputs.runs-on }}
+    needs: deploy
+    if: ${{ inputs.deploy-as-stopped && github.event_name == 'pull_request' && needs.deploy.outputs.envId != '' }}
+    steps:
+      - name: Generate a token
+        id: generate-token
+        if: ${{ inputs.use-app-token }}
+        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
+        with:
+          app_id: ${{ inputs.app-id }}
+          private_key: ${{ secrets.app-private-key }}
+      - name: Stop Environment
+        uses: addnab/docker-run-action@v3
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -e BUNNYSHELL_ENVIRONMENT=${{ needs.deploy.outputs.envId }}
+          run: |
+            bns environments stop --non-interactive -o stylish
+      - name: Comment PR
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.comment-on-pr }}
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          message: |
+            ### Bunnyshell Preview Environment deployed and stopped
+  
+            Available commands:
+            - `/bns:start` to stop the environment
+            - `/bns:deploy` to redeploy the environment
+            - `/bns:delete` to remove the environment
+          comment_tag: deploy-${{ github.run_id }}
+          reactions: rocket
+      - name: Comment PR Environment stopping failed
+        if: ${{ failure() && inputs.comment-on-pr }}
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          message: |
+            ### Bunnyshell Preview Environment stopping failed
+  
+            Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
+            
+            Available commands:
+            - `/bns:stop` to stop the environment
+            - `/bns:deploy` to redeploy the environment
+            - `/bns:delete` to remove the environment
+          comment_tag: deploy-${{ github.run_id }}
+          reactions: confused

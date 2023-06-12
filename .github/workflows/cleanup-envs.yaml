@@ -1,0 +1,123 @@
+name: Deploy Bunnyshell Environment
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: The Platform to execute on
+        type: string
+        default: ubuntu-latest
+      project-id:
+        description: The Bunnyshell Project to use
+        required: true
+        type: string
+      bunnyshell-cli-version:
+        description: The version of the Bunnyshell CLI to use
+        type: string
+        default: v0.16.0
+      env-name-pr-number-pattern:
+        description: The pattern to use to extract the PR number from the environment name
+        type: string
+        default: '#(?<v>[0-9]+)'
+      include-not-found:
+        description: Whether to include environments that are not found (got deleted)
+        type: boolean
+        default: false
+    secrets:
+      bunnyshell-access-token:
+        required: true
+jobs:
+  cleanup:
+    name: Cleanup Environments
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: setup-yq
+        uses: frenck/action-setup-yq@v1
+      - name: Extract environments PR numbers
+        uses: addnab/docker-run-action@v3
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }} -v ${{ github.env }}:/github/envs.txt
+          run: |
+            set -e
+  
+            CURRENT_ENVIRONMENTS='[]'
+            NEXT_PAGE=1
+            while [ "$NEXT_PAGE" != "" ]; do
+              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --page "$NEXT_PAGE" --non-interactive -o json`
+            
+              ENVS_COUNT=`echo $ENVIRONMENTS_LIST_JSON | jq 'try ._embedded.item | length'`
+              if [ "$ENVS_COUNT" = "0" ]; then
+                break
+              fi
+            
+              PAGE_ENVIRONMENTS=`echo "$ENVIRONMENTS_LIST_JSON" | jq -c 'try ._embedded.item | map({id: .id, pr_number: .name | capture("${{ inputs.env-name-pr-number-pattern }}").v})'`
+
+              CURRENT_ENVIRONMENTS=`jq -c --argjson arr1 "$CURRENT_ENVIRONMENTS" --argjson arr2 "$PAGE_ENVIRONMENTS" -n '$arr1 + $arr2 | group_by(.id) | map(.[-1])'`
+            
+              NEXT_PAGE=`echo "$ENVIRONMENTS_LIST_JSON" | jq -r '._links.next.href // empty' | sed -E 's/.*page=([0-9]+).*/\1/'`
+            done
+            
+            echo "Found: $CURRENT_ENVIRONMENTS"
+  
+            echo "CURRENT_ENVIRONMENTS=$CURRENT_ENVIRONMENTS" >> /github/envs.txt
+      - name: Check the PRs statuses
+        id: check-the-prs-statuses
+        uses: actions/github-script@v6
+        if: ${{ env.CURRENT_ENVIRONMENTS != '[]' }}
+        with:
+          retries: 3
+          result-encoding: string
+          script: |
+            const envs_ids = []
+            
+            const include_not_found = ${{ inputs.include-not-found }}
+            console.log(include_not_found)
+            const prs_to_check = JSON.parse(process.env.CURRENT_ENVIRONMENTS)
+            
+            let pull_request;
+            for (const pr_to_check of prs_to_check) {
+              console.log(`Checking PR ${pr_to_check.pr_number}`);
+
+              try {
+                response = await github.rest.pulls.get({
+                  pull_number: pr_to_check.pr_number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                })
+              } catch (e) {
+                if (e.status === 404) {
+                  console.log('PR not found');
+                  if (include_not_found) {
+                    envs_ids.push(pr_to_check.id)
+                  }
+
+                  continue;
+                } else {
+                  throw e;
+                }
+              }
+            
+              pull_request_state = response?.data?.state;
+              console.log(`Got PR in state ${pull_request_state}`)
+              if (pull_request_state === 'closed') {
+                envs_ids.push(pr_to_check.id)
+              }
+            }
+            
+            console.log('Will delete Environments: ' + envs_ids.join(','))
+            
+            return envs_ids.join(',')
+      - name: Delete Bunnyshell environments
+        uses: addnab/docker-run-action@v3
+        if: ${{ steps.check-the-prs-statuses.outputs.result != '' }}
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+          run: |
+            set -e
+
+            PR_NUMBERS_DELETE_ENVS="${{ steps.check-the-prs-statuses.outputs.result }}"
+            for ENV_ID in ${PR_NUMBERS_DELETE_ENVS//,/ }; do
+              echo "Deleting environment $ENV_ID..."
+              bns environments delete --id "$ENV_ID" --non-interactive -o stylish || true
+            done
