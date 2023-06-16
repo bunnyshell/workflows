@@ -210,8 +210,8 @@ jobs:
           if [ "${{ inputs.bunnyshell-yaml-path }}" != "" ]; then
             yq "(.components[] | select(.gitBranch != null)).gitBranch |= \"${{ env.BNS_GIT_SHA }}\"" ${{ inputs.bunnyshell-yaml-path }} > bunnyshell_wf_updated.yaml
           else
-            if [ "${{ secrets.bunnyshell-yaml-path-decryption-key }}" != "" ]; then
-               gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-path-decryption-key }}" --output bunnyshell_wf_updated.yaml <(echo "${{ inputs.bunnyshell-yaml-contents }}" | base64 -d)
+            if [ "${{ secrets.bunnyshell-yaml-contents-decryption-key }}" != "" ]; then
+               gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-decryption-key }}" --output bunnyshell_wf_updated.yaml <(echo "${{ inputs.bunnyshell-yaml-contents }}" | base64 -d)
             else
                EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
                cat <<$EOF > bunnyshell_wf_updated.yaml
