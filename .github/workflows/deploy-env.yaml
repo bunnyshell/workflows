@@ -63,7 +63,7 @@ on:
         description: The private key of the GitHub App
       bunnyshell-access-token:
         required: true
-      bunnyshell-yaml-contents-decryption-key:
+      bunnyshell-yaml-contents-encryption-passphrase:
         description: The secret used to encode input.bunnyshell-yaml-contents
         required: false
     outputs:
@@ -210,8 +210,8 @@ jobs:
           if [ "${{ inputs.bunnyshell-yaml-path }}" != "" ]; then
             yq "(.components[] | select(.gitBranch != null)).gitBranch |= \"${{ env.BNS_GIT_SHA }}\"" ${{ inputs.bunnyshell-yaml-path }} > bunnyshell_wf_updated.yaml
           else
-            if [ "${{ secrets.bunnyshell-yaml-contents-decryption-key }}" != "" ]; then
-               gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-decryption-key }}" --output bunnyshell_wf_updated.yaml <(echo "${{ inputs.bunnyshell-yaml-contents }}" | base64 -d)
+            if [ "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" != "" ]; then
+               gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_wf_updated.yaml <(echo "${{ inputs.bunnyshell-yaml-contents }}" | base64 -d)
             else
                printf "%s" "${{ inputs.bunnyshell-yaml-contents }}" > bunnyshell_wf_updated.yaml
             fi
