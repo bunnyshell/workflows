@@ -6,6 +6,10 @@ on:
         description: The Platform to execute on
         type: string
         default: ubuntu-latest
+      git-ref:
+        description: The Git ref to use
+        type: string
+        required: true
       project-id:
         description: The Bunnyshell Project to use
         required: true
@@ -20,22 +24,28 @@ on:
       env-name:
         description: The name of the Environment
         type: string
-      bunnyshell-yaml-contents:
-        description: The environment configuration file
-        required: false
+      allowed-users:
+        description: The list of the allowed usernames (JSON list). Use '*' for all users.
         type: string
       comment-on-pr:
         description: Write PR comments
         type: boolean
         default: false
-      pr-number:
-        description: The number of the PR on which to write the comments
+      restricted-files:
+        description: File paths (glob patterns) that will prevent the environment from being automatically deployed.
         type: string
-        required: false
       deploy-as-stopped:
         description: Deploy the environment and then stop it
         type: boolean
         default: false
+      bunnyshell-yaml-path:
+        description: Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required.
+        required: false
+        type: string
+      bunnyshell-yaml-contents:
+        description: Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required.
+        required: false
+        type: string
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
@@ -56,24 +66,77 @@ on:
 permissions:
   pull-requests: write
 jobs:
+  checks:
+    name: Checks
+    runs-on: ${{ inputs.runs-on }}
+    if: ${{ github.event_name != 'issue_comment' || (
+        github.event.issue.pull_request
+        && contains(github.event.comment.body, '/bns:deploy')
+        && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
+      ) }}
+    steps:
+      - name: Check bunnyshell.yaml
+        if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
+        run: |
+          echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
+          exit 1
+      - name: Check approved deployment
+        env:
+          IS_APPROVED_DEPLOY_COMMAND: ${{ github.event.issue.pull_request
+              && contains(github.event.comment.body, '/bns:deploy')
+              && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
+            }}
+        run: |
+          echo "$IS_APPROVED_DEPLOY_COMMAND"
+          
+          if [ "$IS_APPROVED_DEPLOY_COMMAND" = "true" ]; then
+            echo "BNS_ENV_APPROVED=1" >> "$GITHUB_ENV"
+          fi
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        if: ${{ env.BNS_ENV_APPROVED != '1' }}
+        with:
+          fetch-depth: 0
+      - name: Get restricted files changes
+        id: changed-restricted-files
+        if: ${{ inputs.restricted-files != '' && env.BNS_ENV_APPROVED != '1' }}
+        uses: tj-actions/changed-files@v36
+        with:
+          files: ${{ inputs.restricted-files }}
+      - name: Comment PR Environment being created
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.comment-on-pr && steps.changed-restricted-files.outputs.any_modified == 'true' }}
+        with:
+          message: |
+            ### Bunnyshell Preview Environment automatic creation skipped due to restricted files changes.
+            
+            Add a comment containing `/bns:deploy` to approve the creation of the environment.
+          comment_tag: bunnyshell-preview-env
+      - name: Abort due to restricted files changes
+        if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
+        run: |
+          echo "Restricted files changes detected. Aborting."
+  
+          exit 1
   deploy:
-    name: Deploy environment
+    name: Deploy Environment
+    needs: checks
     runs-on: ${{ inputs.runs-on }}
     outputs:
       env-id: ${{ env.BNS_ENV_ID }}
       env-endpoints: ${{ env.BNS_ENV_ENDPOINTS }}
+      env-created: ${{ env.BNS_ENV_CREATED }}
     steps:
-      - name: Decrypt bunnyshell.yaml
+      - name: setup-yq
+        uses: frenck/action-setup-yq@v1
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.git-ref }}
+          fetch-depth: 0
+      - name: Prepare vars
         run: |
-          set -e
-
-          cat <<EOFBNSYAML > bunnyshell_updated.yaml
-          ${{ inputs.bunnyshell-yaml-contents }}
-          EOFBNSYAML
-
-          if [ "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" != "" ]; then
-            gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_updated.yaml <(cat bunnyshell_updated.yaml | base64 -d)
-          fi
+          echo "BNS_GIT_SHA=`git rev-parse --short HEAD`" >> "$GITHUB_ENV"
       - name: Search for Environment
         uses: addnab/docker-run-action@v3
         if: ${{ inputs.env-name != '' }}
@@ -105,6 +168,19 @@ jobs:
   
             echo "BNS_ENV_ID=`bns environments show --non-interactive -o json \
               | jq -r 'try .id | select (.!=null)'`" >> /github/envs.txt
+      - name: Prepare bunnyshell.yaml
+        run: |
+          set -e
+
+          if [ "${{ inputs.bunnyshell-yaml-path }}" != "" ]; then
+            yq "(.components[] | select(.gitBranch != null)).gitBranch |= \"${{ env.BNS_GIT_SHA }}\"" ${{ inputs.bunnyshell-yaml-path }} > bunnyshell_wf_updated.yaml
+          else
+            if [ "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" != "" ]; then
+               gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_wf_updated.yaml <(echo "${{ inputs.bunnyshell-yaml-contents }}" | base64 -d)
+            else
+               printf "%s" "${{ inputs.bunnyshell-yaml-contents }}" > bunnyshell_wf_updated.yaml
+            fi
+          fi
       - name: Create Environment
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID == '' }}"
@@ -119,8 +195,8 @@ jobs:
   
             echo "BNS_ENV_CREATED=1" >> /github/envs.txt
   
-            CREATE_ENV_OUTPUT=`bns environments create --name "${{ inputs.env-name }}" --from-path /work/bunnyshell_updated.yaml \
-              --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive --debug -o json`
+            CREATE_ENV_OUTPUT=`bns environments create --name "${{ inputs.env-name }}" --from-path /work/bunnyshell_wf_updated.yaml \
+              --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive -o json`
             if [ "$?" != "0" ]; then
               echo "Failed to create the environment: $CREATE_ENV_OUTPUT"
               exit 1
@@ -137,7 +213,7 @@ jobs:
             -e BUNNYSHELL_ENVIRONMENT=${{ env.BNS_ENV_ID }}
             -v ${{ github.workspace }}:/work
           run: |
-            bns environments update-configuration --from-path /work/bunnyshell_updated.yaml --non-interactive -o stylish
+            bns environments update-configuration --from-path /work/bunnyshell_wf_updated.yaml --non-interactive -o stylish
       - name: Deploy Environment
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID != '' }}"
@@ -161,7 +237,7 @@ jobs:
             echo "EOF" >> /github/envs.txt
       - name: Comment PR Environment deployed
         uses: thollander/actions-comment-pull-request@v2
-        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && !inputs.deploy-as-stopped }}
+        if: ${{ inputs.comment-on-pr && github.event_name == 'issue_comment' }}
         with:
           message: |
             ### Bunnyshell Preview Environment deployed
@@ -175,11 +251,11 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
-          pr_number: ${{ inputs.pr-number }}
       - name: Comment PR Environment deployment failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
         with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
           message: |
             ### Bunnyshell Preview Environment deployment failed
   
@@ -189,12 +265,11 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
-          pr_number: ${{ inputs.pr-number }}
   stop:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
     needs: deploy
-    if: ${{ inputs.deploy-as-stopped }}
+    if: ${{ inputs.deploy-as-stopped && github.event_name == 'pull_request' && needs.deploy.outputs.env-id != '' }}
     steps:
       - name: Stop Environment
         uses: addnab/docker-run-action@v3
@@ -217,7 +292,6 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
-          pr_number: ${{ inputs.pr-number }}
       - name: Comment PR Environment stopping failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
@@ -232,4 +306,3 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
-          pr_number: ${{ inputs.pr-number }}
