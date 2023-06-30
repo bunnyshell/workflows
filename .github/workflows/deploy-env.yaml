@@ -72,7 +72,8 @@ jobs:
           EOFBNSYAML
 
           if [ "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" != "" ]; then
-            gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_updated.yaml <(cat bunnyshell_updated.yaml | base64 -d)
+            gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_updated_decrypted.yaml <(cat bunnyshell_updated.yaml | base64 -d)
+            mv bunnyshell_updated_decrypted.yaml bunnyshell_updated.yaml
           fi
       - name: Search for Environment
         uses: addnab/docker-run-action@v3
