@@ -1,0 +1,108 @@
+name: Prepare Bunnyshell Configuration
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: The Platform to execute on
+        type: string
+        default: ubuntu-latest
+      git-ref:
+        description: The Git ref to use
+        type: string
+        required: true
+      allowed-users:
+        description: The list of the allowed usernames (JSON list). Use '*' for all users.
+        type: string
+      restricted-files:
+        description: File paths (glob patterns) that will prevent the environment from being automatically deployed.
+        type: string
+      bunnyshell-yaml-path:
+        description: Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required.
+        required: false
+        type: string
+      bunnyshell-yaml-contents:
+        description: Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required.
+        required: false
+        type: string
+env:
+  IS_APPROVED_DEPLOY_COMMAND: ${{ github.event.issue.pull_request != ''
+      && contains(github.event.comment.body, '/bns:deploy')
+      && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
+    }}
+jobs:
+  checks:
+    name: Checks
+    outputs:
+      skip-deployment: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
+    runs-on: ${{ inputs.runs-on }}
+    if: ${{ github.event_name != 'issue_comment' || (
+        github.event.issue.pull_request
+        && contains(github.event.comment.body, '/bns:deploy')
+        && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
+      ) }}
+    steps:
+      - name: Validate inputs
+        if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
+        run: |
+          echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
+          exit 1
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        if: ${{ inputs.restricted-files != '' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
+        with:
+          fetch-depth: 0
+      - name: Get restricted files changes
+        id: changed-restricted-files
+        if: ${{ inputs.restricted-files != '' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
+        uses: tj-actions/changed-files@v36
+        with:
+          files: ${{ inputs.restricted-files }}
+      - name: Abort due to restricted files changes
+        if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
+        run: |
+          echo "Restricted files changes detected."
+  prepare:
+    name: Prepare bunnyshell.yaml
+    needs: checks
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: setup-yq
+        if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
+        uses: frenck/action-setup-yq@v1
+      - name: Check out the repo
+        if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.git-ref }}
+          fetch-depth: 0
+      - name: Write bunnyshell.yaml artifact
+        if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
+        run: |
+          set -e
+
+          mkdir -p  .bunnyshell-tmp/artifact
+
+          if [ "${{ inputs.bunnyshell-yaml-path }}" != "" ]; then
+            BNS_GIT_SHA=`git rev-parse --short HEAD`
+            yq "(.components[] | select(.gitBranch != null)).gitBranch |= \"$BNS_GIT_SHA\"" ${{ inputs.bunnyshell-yaml-path }} > .bunnyshell-tmp/artifact/bunnyshell.yaml
+          else
+            printf "%s" "${{ inputs.bunnyshell-yaml-contents }}" > .bunnyshell-tmp/artifact/bunnyshell.yaml
+          fi
+      - name: Write data artifacts
+        run: |
+          set -e
+
+          mkdir -p  .bunnyshell-tmp/artifact
+
+          cp "${{ github.event_path }}" .bunnyshell-tmp/artifact/event.json
+          cat << EOF > .bunnyshell-tmp/artifact/flags.json
+          {
+            "skip_deployment": ${{ needs.checks.outputs.skip-deployment }}
+          }
+          EOF
+      - name: Upload bunnyshell.yaml as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: bunnyshell
+          path: .bunnyshell-tmp/artifact/
+          retention-days: 1

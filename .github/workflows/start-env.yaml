@@ -27,26 +27,16 @@ on:
         description: The version of the Bunnyshell CLI to use
         type: string
         default: v0.16.0
-      use-app-token:
-        description: Use GitHub App token instead of the GitHub Actions token
-        type: boolean
-        default: false
-      app-id:
-        description: The ID of the GitHub App
-        type: string
-        default: 338154
     secrets:
-      app-private-key:
-        description: The private key of the GitHub App
       bunnyshell-access-token:
         required: true
     outputs:
       env-id:
         description: The ID of the Environment
-        value: ${{ jobs.start.outputs.envId }}
+        value: ${{ jobs.start.outputs.env-id }}
       endpoints-json:
         description: The environment endpoints as JSON
-        value: ${{ jobs.start.outputs.envEndpoints }}
+        value: ${{ jobs.start.outputs.env-endpoints }}
 permissions:
   pull-requests: write
 jobs:
@@ -72,26 +62,10 @@ jobs:
     name: Start Environment
     runs-on: ${{ inputs.runs-on }}
     outputs:
-      envId: ${{ inputs.env-id || env.BNS_ENV_ID }}
-      envEndpoints: ${{ env.BNS_ENV_ENDPOINTS }}
+      env-id: ${{ inputs.env-id || env.BNS_ENV_ID }}
+      env-endpoints: ${{ env.BNS_ENV_ENDPOINTS }}
     needs: validations
     steps:
-      - name: Generate a token
-        id: generate-token
-        if: ${{ inputs.use-app-token }}
-        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
-        with:
-          app_id: ${{ inputs.app-id }}
-          private_key: ${{ secrets.app-private-key }}
-      - name: Comment PR Environment starting
-        uses: thollander/actions-comment-pull-request@v2
-        if: ${{ inputs.comment-on-pr }}
-        with:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
-          message: |
-            ### Bunnyshell Preview Environment starting
-          comment_tag: start-${{ github.run_id }}
-          reactions: eyes
       - name: Search for Environment
         uses: addnab/docker-run-action@v3
         if: ${{ inputs.env-name != '' }}
@@ -147,7 +121,6 @@ jobs:
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.comment-on-pr }}
         with:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
           message: |
             ### Bunnyshell Preview Environment started
             
@@ -159,13 +132,11 @@ jobs:
             - `/bns:stop` to stop the environment
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
-          comment_tag: start-${{ github.run_id }}
-          reactions: rocket
+          comment_tag: bunnyshell-preview-env
       - name: Comment PR Environment starting failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
         with:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
           message: |
             ### Bunnyshell Preview Environment starting failed
             
@@ -177,5 +148,4 @@ jobs:
             - `/bns:start` to start the environment
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
-          comment_tag: start-${{ github.run_id }}
-          reactions: confused
+          comment_tag: bunnyshell-preview-env
