@@ -121,7 +121,7 @@ jobs:
             echo "BNS_ENV_CREATED=1" >> /github/envs.txt
   
             CREATE_ENV_OUTPUT=`bns environments create --name "${{ inputs.env-name }}" --from-path /work/bunnyshell_updated.yaml \
-              --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive --debug -o json`
+              --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive -o json`
             if [ "$?" != "0" ]; then
               echo "Failed to create the environment: $CREATE_ENV_OUTPUT"
               exit 1
