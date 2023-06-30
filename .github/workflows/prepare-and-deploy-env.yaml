@@ -31,6 +31,10 @@ on:
         description: Write PR comments
         type: boolean
         default: false
+      pr-number:
+        description: The number of the PR on which to write the comments
+        type: string
+        required: false
       restricted-files:
         description: File paths (glob patterns) that will prevent the environment from being automatically deployed.
         type: string
@@ -112,6 +116,7 @@ jobs:
             
             Add a comment containing `/bns:deploy` to approve the creation of the environment.
           comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Abort due to restricted files changes
         if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
         run: |
@@ -251,6 +256,7 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Comment PR Environment deployment failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
@@ -265,6 +271,7 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
   stop:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
@@ -292,6 +299,7 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Comment PR Environment stopping failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
@@ -306,3 +314,4 @@ jobs:
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
