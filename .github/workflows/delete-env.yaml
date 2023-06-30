@@ -77,13 +77,12 @@ jobs:
             echo "Could not find environment with name '${{ inputs.env-name }}'"
           
             echo "ERROR_MESSAGE=Could not find environment with name '${{ inputs.env-name }}'." >> /github/envs.txt
-          
-            exit 1
           fi
           
           echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
     - name: Delete Environment
       uses: addnab/docker-run-action@v3
+      if: ${{ env.BNS_ENV_ID }}
       with:
         image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
         options: >
@@ -111,7 +110,7 @@ jobs:
           bns environments delete --non-interactive -o stylish
     - name: Comment PR Environment deleted
       uses: thollander/actions-comment-pull-request@v2
-      if: ${{ inputs.comment-on-pr }}
+      if: ${{ inputs.comment-on-pr && env.BNS_ENV_ID }}
       with:
         message: |
           ### Bunnyshell Preview Environment deleted
