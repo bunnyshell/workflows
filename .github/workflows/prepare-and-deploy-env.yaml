@@ -276,7 +276,7 @@ jobs:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
     needs: deploy
-    if: ${{ inputs.deploy-as-stopped && github.event_name == 'pull_request' && needs.deploy.outputs.env-id != '' }}
+    if: ${{ inputs.deploy-as-stopped && needs.deploy.outputs.env-id != '' }}
     steps:
       - name: Stop Environment
         uses: addnab/docker-run-action@v3
