@@ -242,7 +242,7 @@ jobs:
             echo "EOF" >> /github/envs.txt
       - name: Comment PR Environment deployed
         uses: thollander/actions-comment-pull-request@v2
-        if: ${{ inputs.comment-on-pr && github.event_name == 'issue_comment' }}
+        if: ${{ inputs.comment-on-pr && !inputs.deploy-as-stopped }}
         with:
           message: |
             ### Bunnyshell Preview Environment deployed
