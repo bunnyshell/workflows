@@ -122,7 +122,7 @@ jobs:
         if: ${{ inputs.comment-on-pr }}
         with:
           message: |
-            ### Bunnyshell Preview Environment started
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment started
             
             |Component|Endpoints|
             |---------|---------|
@@ -138,7 +138,7 @@ jobs:
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### Bunnyshell Preview Environment starting failed
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment starting failed
             
             ${{ env.ERROR_MESSAGE }}
             
