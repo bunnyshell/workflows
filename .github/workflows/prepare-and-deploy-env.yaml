@@ -112,7 +112,7 @@ jobs:
         if: ${{ inputs.comment-on-pr && steps.changed-restricted-files.outputs.any_modified == 'true' }}
         with:
           message: |
-            ### Bunnyshell Preview Environment automatic creation skipped due to restricted files changes.
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment creation skipped due to restricted files changes
             
             Add a comment containing `/bns:deploy` to approve the creation of the environment.
           comment_tag: bunnyshell-preview-env
@@ -245,7 +245,7 @@ jobs:
         if: ${{ inputs.comment-on-pr && !inputs.deploy-as-stopped }}
         with:
           message: |
-            ### Bunnyshell Preview Environment deployed
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployed
   
             |Component|Endpoints|
             |---------|---------|
@@ -263,7 +263,7 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
           message: |
-            ### Bunnyshell Preview Environment deployment failed
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployment failed
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
   
@@ -292,10 +292,10 @@ jobs:
         if: ${{ inputs.comment-on-pr }}
         with:
           message: |
-            ### Bunnyshell Preview Environment deployed and stopped
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment created
   
             Available commands:
-            - `/bns:start` to stop the environment
+            - `/bns:start` to start the environment
             - `/bns:deploy` to redeploy the environment
             - `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
@@ -305,7 +305,7 @@ jobs:
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### Bunnyshell Preview Environment stopping failed
+            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment creation failed
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
             
