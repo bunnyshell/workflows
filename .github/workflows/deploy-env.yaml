@@ -33,7 +33,7 @@ on:
         type: string
         required: false
       deploy-as-stopped:
-        description: Deploy the environment and then stop it
+        description: Deploy the environment and then stop it. Temporarily disabled.
         type: boolean
         default: false
       bunnyshell-cli-version:
@@ -162,10 +162,14 @@ jobs:
             echo "EOF" >> /github/envs.txt
       - name: Comment PR Environment deployed
         uses: thollander/actions-comment-pull-request@v2
-        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && !inputs.deploy-as-stopped }}
+        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && (true || !inputs.deploy-as-stopped) }}
         with:
           message: |
             ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployed
+
+            **It will be automatically stopped in 4 hours.**
+
+            Use the command `/bns:start` to start it if it's stopped.
   
             |Component|Endpoints|
             |---------|---------|
@@ -195,7 +199,7 @@ jobs:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
     needs: deploy
-    if: ${{ inputs.deploy-as-stopped }}
+    if: ${{ false && inputs.deploy-as-stopped }}
     steps:
       - name: Stop Environment
         uses: addnab/docker-run-action@v3
