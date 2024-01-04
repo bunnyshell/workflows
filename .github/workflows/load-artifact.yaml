@@ -1,0 +1,64 @@
+name: Load Artifact Workflow
+on:
+  workflow_call:
+    inputs:
+      workflow_run_id:
+        required: true
+        type: string
+
+jobs:
+  load-artifact:
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.set_variables.outputs.pr-number }}
+      skip-deployment: ${{ steps.set_variables.outputs.skip-deployment }}
+      is-pull-request-event: ${{ steps.set_variables.outputs.is-pull-request-event }}
+      bunnyshell-yaml-contents: ${{ steps.load_data.outputs.bunnyshell-yaml-contents }}
+    steps:
+      - name: Download artifact
+        id: download
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{ inputs.workflow_run_id }},
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "bunnyshell"
+            })[0];
+            if (matchArtifact === undefined) {
+              throw TypeError('Build Artifact not found!');
+            }
+            let download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchArtifact.id,
+              archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/artifact.zip`, Buffer.from(download.data));
+
+      - name: Load artifact data
+        id: load_data
+        run: |
+          unzip artifact.zip
+          echo 'EVENT_JSON<<EOFEVENTJSON' >> $GITHUB_ENV
+          cat event.json >> $GITHUB_ENV
+          echo -e '\nEOFEVENTJSON' >> $GITHUB_ENV
+          echo 'FLAGS_JSON<<EOFFLAGSJSON' >> $GITHUB_ENV
+          cat flags.json >> $GITHUB_ENV
+          echo -e '\nEOFFLAGSJSON' >> $GITHUB_ENV
+          if [ -f "bunnyshell.yaml" ]; then
+            echo 'BUNNYSHELL_YAML_CONTENTS<<EOFBNSYAML' >> $GITHUB_ENV
+            cat bunnyshell.yaml >> $GITHUB_ENV
+            echo -e '\nEOFBNSYAML' >> $GITHUB_ENV
+          fi
+
+      - name: Set variables
+        id: set_variables
+        run: |
+          echo "::set-output name=pr-number::$(jq -r '.issue.number // .number' event.json)"
+          echo "::set-output name=skip-deployment::$(jq -r '.skip_deployment' flags.json)"
+          echo "::set-output name=is-pull-request-event::$(jq -r '.pull_request != null' event.json)"
