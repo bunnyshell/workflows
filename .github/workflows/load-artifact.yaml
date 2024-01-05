@@ -10,10 +10,10 @@ jobs:
   load-artifact:
     runs-on: ubuntu-latest
     outputs:
-      pr-number: ${{ steps.set_variables.outputs.pr-number }}
-      skip-deployment: ${{ steps.set_variables.outputs.skip-deployment }}
-      is-pull-request-event: ${{ steps.set_variables.outputs.is-pull-request-event }}
-      bunnyshell-yaml-contents: ${{ steps.load_data.outputs.bunnyshell-yaml-contents }}
+      pr-number: ${{ env.PR_NUMBER }}
+      skip-deployment: ${{ fromJSON(env.FLAGS_JSON).skip_deployment }}
+      is-pull-request-event: ${{ fromJSON(env.EVENT_JSON).pull_request != '' }}
+      bunnyshell-yaml-contents: ${{ env.BUNNYSHELL_YAML_CONTENTS }}
     steps:
       - name: Download artifact
         id: download
