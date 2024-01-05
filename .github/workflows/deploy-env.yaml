@@ -39,7 +39,7 @@ on:
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
-        default: v0.16.0
+        default: v0.18.0
     secrets:
       bunnyshell-access-token:
         required: true
@@ -84,11 +84,11 @@ jobs:
           run: |
             set -e
   
-            BNS_ENV_ID=`bns environments list --search "${{ inputs.env-name }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+            BNS_ENV_ID=`bns environments list --label "auto-gha=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
               | jq -r "try ._embedded.item[0].id | select (.!=null)"`
   
             if [ -z "$BNS_ENV_ID" ]; then
-              echo "Could not find environment with name '${{ inputs.env-name }}'."
+              echo "Could not find environment with label 'auto-gha=pr-${{ inputs.pr-number }}'."
             fi
   
             echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
@@ -121,6 +121,7 @@ jobs:
             echo "BNS_ENV_CREATED=1" >> /github/envs.txt
   
             CREATE_ENV_OUTPUT=`bns environments create --name "${{ inputs.env-name }}" --from-path /work/bunnyshell_updated.yaml \
+              --label "auto-gha=pr-${{ inputs.pr-number }}" \
               --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive --debug -o json`
             if [ "$?" != "0" ]; then
               echo "Failed to create the environment: $CREATE_ENV_OUTPUT"

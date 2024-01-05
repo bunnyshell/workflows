@@ -13,9 +13,10 @@ on:
       env-id:
         description: The ID of the Environment to delete
         type: string
-      env-name:
-        description: The name of the Environment to delete
+      pr-number:
+        description: The number of the PR on which to write the comments
         type: string
+        required: false
       allowed-users:
         description: The list of the allowed usernames (JSON list). Use '*' for all users.
         type: string
@@ -26,7 +27,7 @@ on:
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
-        default: v0.16.0
+        default: v0.18.0
     secrets:
       bunnyshell-access-token:
         required: true
@@ -49,10 +50,10 @@ jobs:
       )}}
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - name: Validate env ID or name
-        if: "${{ inputs.env-id == '' && inputs.env-name == '' }}"
+      - name: Validate env ID or PR number
+        if: "${{ inputs.env-id == '' && inputs.pr-number == '' }}"
         run: |
-          echo "One of env-id or env-name inputs is required."
+          echo "One of env-id or pr-number inputs is required."
           exit 1
   delete:
     name: Delete Environment
@@ -63,20 +64,20 @@ jobs:
     steps:
     - name: Search for Environment
       uses: addnab/docker-run-action@v3
-      if: ${{ inputs.env-name != '' }}
+      if: ${{ inputs.pr-number != '' }}
       with:
         image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
         options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }} -v ${{ github.env }}:/github/envs.txt
         run: |
           set -e
 
-          BNS_ENV_ID=`bns environments list --search "${{ inputs.env-name }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+          BNS_ENV_ID=`bns environments list --label "auto-gha=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
             | jq -r "try ._embedded.item[0].id | select (.!=null)"`
           
           if [ -z "$BNS_ENV_ID" ]; then
-            echo "Could not find environment with name '${{ inputs.env-name }}'"
+            echo "Could not find environment with label 'auto-gha=pr-${{ inputs.pr-number }}'."
           
-            echo "ERROR_MESSAGE=Could not find environment with name '${{ inputs.env-name }}'." >> /github/envs.txt
+            echo "ERROR_MESSAGE=Could not find environment with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/envs.txt
           fi
           
           echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
