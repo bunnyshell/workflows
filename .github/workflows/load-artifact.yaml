@@ -9,15 +9,19 @@ on:
       pr-number:
         description: "The number of the PR"
         value: ${{ jobs.load-artifact.outputs.pr-number }}
+        type: string
       skip-deployment:
         description: "Flag deciding whether or not deployment should be skipped or performed"
         value: ${{ jobs.load-artifact.outputs.skip-deployment }}
+        type: boolean
       is-pull-request-event:
         description: "Flag containing information on whether this is a PR event or not"
         value: ${{ jobs.load-artifact.outputs.is-pull-request-event }}
+        type: boolean
       bunnyshell-yaml-contents:
         description: "The bunnyshell.yaml contents"
         value: ${{ jobs.load-artifact.outputs.bunnyshell-yaml-contents }}
+        type: string
 jobs:
   load-artifact:
     runs-on: ubuntu-latest
@@ -71,6 +75,9 @@ jobs:
       - name: Set variables
         id: set_variables
         run: |
+          echo "debug"
+          cat event.json
+          echo "pr_number=$(jq -r '.issue.number // .number' event.json)"
           echo "pr_number=$(jq -r '.issue.number // .number' event.json)" >> $GITHUB_ENV
           echo "skip_deployment=$(jq -r '.skip_deployment' flags.json)" >> $GITHUB_ENV
           echo "is_pull_request_event=$(jq -r '.pull_request != null' event.json)" >> $GITHUB_ENV
