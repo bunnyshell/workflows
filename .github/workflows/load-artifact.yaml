@@ -5,7 +5,19 @@ on:
       workflow_run_id:
         required: true
         type: string
-
+    outputs:
+      pr-number:
+        description: "The number of the PR"
+        value: ${{ jobs.load-artifact.outputs.pr-number }}
+      skip-deployment:
+        description: "Flag deciding whether or not deployment should be skipped or performed"
+        value: ${{ jobs.load-artifact.outputs.skip-deployment }}
+      is-pull-request-event:
+        description: "Flag containing information on whether this is a PR event or not"
+        value: ${{ jobs.load-artifact.outputs.is-pull-request-event }}
+      bunnyshell-yaml-contents:
+        description: "The bunnyshell.yaml contents"
+        value: ${{ jobs.load-artifact.outputs.bunnyshell-yaml-contents }}
 jobs:
   load-artifact:
     runs-on: ubuntu-latest
