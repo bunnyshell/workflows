@@ -59,6 +59,6 @@ jobs:
       - name: Set variables
         id: set_variables
         run: |
-          echo "::set-output name=pr-number::$(jq -r '.issue.number // .number' event.json)"
-          echo "::set-output name=skip-deployment::$(jq -r '.skip_deployment' flags.json)"
-          echo "::set-output name=is-pull-request-event::$(jq -r '.pull_request != null' event.json)"
+          echo "pr_number=$(jq -r '.issue.number // .number' event.json)" >> $GITHUB_ENV
+          echo "skip_deployment=$(jq -r '.skip_deployment' flags.json)" >> $GITHUB_ENV
+          echo "is_pull_request_event=$(jq -r '.pull_request != null' event.json)" >> $GITHUB_ENV
