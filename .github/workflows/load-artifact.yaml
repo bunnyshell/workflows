@@ -22,7 +22,7 @@ jobs:
   load-artifact:
     runs-on: ubuntu-latest
     outputs:
-      pr-number: ${{ env.pr_number }}
+      pr-number: ${{ env.PR_NUMBER }}
       skip-deployment: ${{ fromJSON(env.FLAGS_JSON).skip_deployment }}
       is-pull-request-event: ${{ fromJSON(env.EVENT_JSON).pull_request != '' }}
       bunnyshell-yaml-contents: ${{ env.BUNNYSHELL_YAML_CONTENTS }}
@@ -56,24 +56,19 @@ jobs:
         id: load_data
         run: |
           unzip artifact.zip
+          
           echo 'EVENT_JSON<<EOFEVENTJSON' >> $GITHUB_ENV
           cat event.json >> $GITHUB_ENV
           echo -e '\nEOFEVENTJSON' >> $GITHUB_ENV
+          
           echo 'FLAGS_JSON<<EOFFLAGSJSON' >> $GITHUB_ENV
           cat flags.json >> $GITHUB_ENV
           echo -e '\nEOFFLAGSJSON' >> $GITHUB_ENV
+          
           if [ -f "bunnyshell.yaml" ]; then
             echo 'BUNNYSHELL_YAML_CONTENTS<<EOFBNSYAML' >> $GITHUB_ENV
             cat bunnyshell.yaml >> $GITHUB_ENV
             echo -e '\nEOFBNSYAML' >> $GITHUB_ENV
           fi
-
-      - name: Set variables
-        id: set_variables
-        run: |
-          echo "debug"
-          cat event.json
-          echo "pr_number=$(jq -r '.issue.number // .number' event.json)"
-          echo "pr_number=$(jq -r '.issue.number // .number' event.json)" >> $GITHUB_ENV
-          echo "skip_deployment=$(jq -r '.skip_deployment' flags.json)" >> $GITHUB_ENV
-          echo "is_pull_request_event=$(jq -r '.pull_request != null' event.json)" >> $GITHUB_ENV
+          
+          echo "PR_NUMBER=$(jq -r '.issue.number // .number' event.json)" >> $GITHUB_ENV
