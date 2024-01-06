@@ -63,6 +63,14 @@ jobs:
       env-id: ${{ env.BNS_ENV_ID }}
       env-endpoints: ${{ env.BNS_ENV_ENDPOINTS }}
     steps:
+      - name: Comment PR Environment will be deployed
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.pr-number != '' }}
+        with:
+          message: |
+            ### :rocket: [Bunnyshell](https://www.bunnyshell.com) Preview Environment will be deployed
+          comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Decrypt bunnyshell.yaml
         run: |
           set -e
@@ -133,6 +141,16 @@ jobs:
             
             echo "Environment created"
             echo ":white_check_mark: Environment created" >> $GITHUB_STEP_SUMMARY
+      - name: Update comment for PR Environment deploying
+        uses: thollander/actions-comment-pull-request@v2
+        if: "${{ env.BNS_ENV_ID != '' }}"
+        with:
+          message: |
+            ### :rocket: [Bunnyshell](https://www.bunnyshell.com) Preview Environment is deploying...
+
+            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
+          comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Update Environment
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID != '' }}"
