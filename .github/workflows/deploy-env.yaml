@@ -97,6 +97,8 @@ jobs:
   
             if [ -z "$BNS_ENV_ID" ]; then
               echo "Could not find environment with label 'auto-gha=pr-${{ inputs.pr-number }}'."
+            echo $GITHUB_STEP_SUMMARY
+            ls -alh $GITHUB_STEP_SUMMARY
               echo ":speech_balloon: Could not find an existing environment with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> $GITHUB_STEP_SUMMARY
             fi
   
