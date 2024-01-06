@@ -82,7 +82,9 @@ jobs:
           if [ "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" != "" ]; then
             gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_updated_decrypted.yaml <(cat bunnyshell_updated.yaml | base64 -d)
             mv bunnyshell_updated_decrypted.yaml bunnyshell_updated.yaml
+            echo "bunnyshell.yaml decrypted successfully"
           fi
+          echo "ghss = $GITHUB_STEP_SUMMARY"
       - name: Search for Environment
         uses: addnab/docker-run-action@v3
         if: ${{ inputs.pr-number != '' }}
