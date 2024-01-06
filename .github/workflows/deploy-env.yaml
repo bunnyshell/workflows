@@ -85,6 +85,7 @@ jobs:
             echo "bunnyshell.yaml decrypted successfully"
           fi
           echo "ghss = $GITHUB_STEP_SUMMARY"
+          echo '${{ toJson(github) }}'
       - name: Search for Environment
         uses: addnab/docker-run-action@v3
         if: ${{ inputs.pr-number != '' }}
