@@ -89,8 +89,8 @@ jobs:
             printf "%s" "${{ inputs.bunnyshell-yaml-contents }}" > .bunnyshell-tmp/artifact/bunnyshell.yaml
           fi
           
-          echo "Environment definition (`bunnyshell.yaml`) prepared"
-          echo ":white_check_mark: Environment definition (`bunnyshell.yaml`) prepared" >> $GITHUB_STEP_SUMMARY
+          echo 'Environment definition (`bunnyshell.yaml`) prepared'
+          echo ':white_check_mark: Environment definition (`bunnyshell.yaml`) prepared' >> $GITHUB_STEP_SUMMARY
       - name: Write data artifacts
         run: |
           set -e
@@ -115,5 +115,5 @@ jobs:
       - name: Output summary
         if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
         run: |        
-          echo "Environment definition (`bunnyshell.yaml`) and deployment flags uploaded"
-          echo ":white_check_mark: Environment definition (`bunnyshell.yaml`) and deployment flags uploaded" >> $GITHUB_STEP_SUMMARY
+          echo 'Environment definition (`bunnyshell.yaml`) and deployment flags uploaded'
+          echo ':white_check_mark: Environment definition (`bunnyshell.yaml`) and deployment flags uploaded' >> $GITHUB_STEP_SUMMARY

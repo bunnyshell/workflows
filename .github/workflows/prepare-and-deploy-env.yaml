@@ -92,7 +92,7 @@ jobs:
             }}
         run: |
           echo "Deployment approval = $IS_APPROVED_DEPLOY_COMMAND"
-          echo ":x: Deployment approval = $IS_APPROVED_DEPLOY_COMMAND" >> $GITHUB_STEP_SUMMARY
+          echo ":exclamation: Deployment approval = $IS_APPROVED_DEPLOY_COMMAND" >> $GITHUB_STEP_SUMMARY
           
           if [ "$IS_APPROVED_DEPLOY_COMMAND" = "true" ]; then
             echo "BNS_ENV_APPROVED=1" >> "$GITHUB_ENV"
@@ -122,7 +122,7 @@ jobs:
         if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
         run: |
           echo "Restricted files changes detected. Aborting."
-          echo ":x: Restricted files changes detected. Aborting." >> $GITHUB_STEP_SUMMARY
+          echo ":exclamation: Restricted files changes detected. Aborting." >> $GITHUB_STEP_SUMMARY
   
           exit 1
   deploy:
@@ -192,8 +192,8 @@ jobs:
             fi
           fi
           
-          echo "Environment definition (`bunnyshell.yaml`) prepared"
-          echo ":white_check_mark: Environment definition (`bunnyshell.yaml`) prepared" >> $GITHUB_STEP_SUMMARY
+          echo 'Environment definition (`bunnyshell.yaml`) prepared'
+          echo ':white_check_mark: Environment definition (`bunnyshell.yaml`) prepared' >> $GITHUB_STEP_SUMMARY
       - name: Create Environment
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID == '' }}"
@@ -269,11 +269,11 @@ jobs:
             |---------|---------|
             ${{ env.ENDPOINTS_ROWS }}
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/$BNS_ENV_ID
+            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   
             Available commands:
             - :red_circle: `/bns:stop` to stop the environment
-            - :recycle: `/bns:deploy` to redeploy the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
@@ -283,14 +283,14 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
           message: |
-            ### :x: [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployment failed
+            ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployment failed
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/$BNS_ENV_ID
+            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
   
             Available commands:
-            - :recycle: `/bns:deploy` to redeploy the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
@@ -319,11 +319,11 @@ jobs:
           message: |
             ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created - now stopped
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/$BNS_ENV_ID
+            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   
             Available commands:
-            - :large_blue_circle: `/bns:start` to start the environment
-            - :recycle: `/bns:deploy` to redeploy the environment
+            - :large_green_circle: `/bns:start` to start the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
@@ -332,15 +332,15 @@ jobs:
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### :x: [Bunnyshell](https://www.bunnyshell.com) Preview Environment creation failed
+            ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment creation failed
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/$BNS_ENV_ID
+            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
             
             Available commands:
             - :red_circle: `/bns:stop` to stop the environment
-            - :recycle: `/bns:deploy` to redeploy the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
