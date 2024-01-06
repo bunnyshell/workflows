@@ -41,7 +41,7 @@ jobs:
         && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
       ) }}
     steps:
-      - name: Validate inputs
+      - name: Check bunnyshell.yaml
         if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
         run: |
           echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
@@ -88,6 +88,9 @@ jobs:
           else
             printf "%s" "${{ inputs.bunnyshell-yaml-contents }}" > .bunnyshell-tmp/artifact/bunnyshell.yaml
           fi
+          
+          echo "Environment definition (`bunnyshell.yaml`) prepared"
+          echo ":white_check_mark: Environment definition (`bunnyshell.yaml`) prepared" >> $GITHUB_STEP_SUMMARY
       - name: Write data artifacts
         run: |
           set -e
@@ -100,9 +103,17 @@ jobs:
             "skip_deployment": ${{ needs.checks.outputs.skip-deployment }}
           }
           EOF
-      - name: Upload bunnyshell.yaml as Artifact
+          
+          echo "Deployment flags prepared"
+          echo ":white_check_mark: Deployment flags prepared" >> $GITHUB_STEP_SUMMARY
+      - name: Upload bunnyshell.yaml as artifact
         uses: actions/upload-artifact@v3
         with:
           name: bunnyshell
           path: .bunnyshell-tmp/artifact/
           retention-days: 1
+      - name: Output summary
+        if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
+        run: |        
+          echo "Environment definition (`bunnyshell.yaml`) and deployment flags uploaded"
+          echo ":white_check_mark: Environment definition (`bunnyshell.yaml`) and deployment flags uploaded" >> $GITHUB_STEP_SUMMARY

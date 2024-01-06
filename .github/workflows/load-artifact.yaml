@@ -73,3 +73,9 @@ jobs:
           fi
           
           echo "PR_NUMBER=$(jq -r '.issue.number // .number' event.json)" >> $GITHUB_ENV
+          
+          echo "Environment definition (`bunnyshell.yaml`) loaded"
+          echo ":white_check_mark: Environment definition (`bunnyshell.yaml`) loaded" >> $GITHUB_STEP_SUMMARY
+          
+          echo "Deployment flags loaded"
+          echo ":white_check_mark: Deployment flags loaded" >> $GITHUB_STEP_SUMMARY
