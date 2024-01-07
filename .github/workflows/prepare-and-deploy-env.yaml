@@ -133,6 +133,7 @@ jobs:
       env-id: ${{ env.BNS_ENV_ID }}
       env-endpoints: ${{ env.BNS_ENV_ENDPOINTS }}
       env-created: ${{ env.BNS_ENV_CREATED }}
+      pipeline-id: ${{ env.BNS_PIPELINE_ID }}
     steps:
       - name: Comment with PR Environment will be deployed
         uses: thollander/actions-comment-pull-request@v2
@@ -243,7 +244,7 @@ jobs:
           message: |
             ### :rocket: [Bunnyshell](https://www.bunnyshell.com) Preview Environment is deploying...
 
-            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
+            [See Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Update Environment definition
@@ -261,7 +262,7 @@ jobs:
             
             echo "Environment definition updated"
             echo ":white_check_mark: Environment definition updated" >> /github/step_summary.txt
-      - name: Deploy Environment
+      - name: Environment Deploy - trigger
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID != '' }}"
         with:
@@ -274,7 +275,41 @@ jobs:
           run: |
             set -e
   
-            bns environments deploy --non-interactive -o stylish
+            bns environments deploy --non-interactive -o stylish --no-wait
+
+            PIPELINE_ID=`bns pipeline list --status in_progress -o json | jq -r "._embedded.item.[0].id"`
+
+            echo "BNS_PIPELINE_ID=$PIPELINE_ID" >> /github/envs.txt
+
+            echo "Environment deployment started  (Pipeline ID $PIPELINE_ID)"
+            echo ":white_check_mark: Environment deployment started  (Pipeline ID $PIPELINE_ID)" >> /github/step_summary.txt
+      - name: Comment with PR Environment deploying
+        uses: thollander/actions-comment-pull-request@v2
+        if: "${{ env.BNS_ENV_ID != '' }}"
+        with:
+          message: |
+            ### :rocket: [Bunnyshell](https://www.bunnyshell.com) Preview Environment is deploying...
+
+            [See Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+
+            [See Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ env.BNS_PIPELINE_ID }})
+          comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
+      - name: Environment Deploy - wait to finish
+        uses: addnab/docker-run-action@v3
+        if: "${{ env.BNS_ENV_ID != '' }}"
+        with:
+          image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -e BUNNYSHELL_ENVIRONMENT=${{ env.BNS_ENV_ID }}
+            -v ${{ github.env }}:/github/envs.txt
+            -v ${{ github.step_summary }}:/github/step_summary.txt
+          run: |
+            set -e
+
+            # wait for the deployment to finish
+            bns pipeline monitor --id ${{ env.BNS_PIPELINE_ID }}
   
             ENDPOINTS_OUTPUT=`bns environments endpoints --non-interactive -o json`
             
@@ -297,7 +332,9 @@ jobs:
             |---------|---------|
             ${{ env.ENDPOINTS_ROWS }}
             
-            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
+            [See Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+            
+            [See Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ env.BNS_PIPELINE_ID }})
   
             Available commands:
             - :red_circle: `/bns:stop` to stop the environment
@@ -314,7 +351,9 @@ jobs:
           message: |
             ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployment failed
             
-            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
+            [See Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+            
+            [See Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ env.BNS_PIPELINE_ID }})
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
   
@@ -347,9 +386,17 @@ jobs:
           options: >
             -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
             -e BUNNYSHELL_ENVIRONMENT=${{ needs.deploy.outputs.env-id }}
+            -v ${{ github.env }}:/github/envs.txt
             -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
-            bns environments stop --non-interactive -o stylish
+            bns environments stop --non-interactive -o stylish --no-wait
+            
+            PIPELINE_ID=`bns pipeline list --status in_progress -o json | jq -r "._embedded.item.[0].id"`
+            
+            echo "BNS_PIPELINE_ID=$PIPELINE_ID" >> /github/envs.txt
+            
+            # wait for the stop to finish
+            bns pipeline monitor --id ${{ env.BNS_PIPELINE_ID }}
             
             echo "Environment stopped after deployment (see `deploy-as-stopped` option)"
             echo ":white_check_mark: Environment stopped after deployment (see `deploy-as-stopped` option)" >> /github/step_summary.txt
@@ -360,7 +407,11 @@ jobs:
           message: |
             ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created and stopped
             
-            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
+            [See Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+            
+            [See Deployment Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ jobs.deploy.outputs.pipeline-id }})
+            
+            [See Stop Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ env.BNS_PIPELINE_ID }})
   
             Available commands:
             - :large_blue_circle: `/bns:start` to start the environment
@@ -375,7 +426,11 @@ jobs:
           message: |
             ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created, but not stopped
             
-            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
+            [See Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+            
+            [See Deployment Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ jobs.deploy.outputs.pipeline-id }})
+            
+            [See Stop Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ env.BNS_PIPELINE_ID }})
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
             
