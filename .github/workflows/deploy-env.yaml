@@ -159,7 +159,7 @@ jobs:
           message: |
             ### :rocket: [Bunnyshell](https://www.bunnyshell.com) Preview Environment is deploying...
 
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
+            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Update Environment definition
@@ -213,7 +213,7 @@ jobs:
             |---------|---------|
             ${{ env.ENDPOINTS_ROWS }}
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
+            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
   
             Available commands:
             - :red_circle: `/bns:stop` to stop the environment
@@ -229,7 +229,7 @@ jobs:
           message: |
             ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment deployment failed
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
+            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
   
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
   
@@ -275,7 +275,7 @@ jobs:
           message: |
             ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created and stopped
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
+            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
   
             Available commands:
             - :large_blue_circle: `/bns:start` to start the environment
@@ -290,7 +290,7 @@ jobs:
           message: |
             ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created, but not stopped
             
-            Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
+            Environment details and logs: https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }}
             
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
             
