@@ -238,9 +238,11 @@ jobs:
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: Evauate "deploy-as-stopped" option
+      - name: Evaluate "deploy-as-stopped" option
         run: |
-          if [ ${{ inputs.deploy-as-stopped }} ]; then
+          deploy_as_stopped="${{ inputs.deploy-as-stopped }}"
+          
+          if [ "$deploy_as_stopped" = "true" ]; then
             echo 'Environment will be stopped (see `deploy-as-stopped` option)'
             echo ':speech_balloon: Environment will be stopped (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
           else
