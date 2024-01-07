@@ -79,7 +79,7 @@ jobs:
         && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
       ) }}
     steps:
-      - name: Check bunnyshell.yaml
+      - name: Check bunnyshell.yaml input
         if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
         run: |
           echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
@@ -102,13 +102,13 @@ jobs:
         if: ${{ env.BNS_ENV_APPROVED != '1' }}
         with:
           fetch-depth: 0
-      - name: Get restricted files changes
+      - name: Test for restricted files changes
         id: changed-restricted-files
         if: ${{ inputs.restricted-files != '' && env.BNS_ENV_APPROVED != '1' }}
         uses: tj-actions/changed-files@v36
         with:
           files: ${{ inputs.restricted-files }}
-      - name: Comment PR Environment being created
+      - name: Comment with PR Environment being created
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.comment-on-pr && steps.changed-restricted-files.outputs.any_modified == 'true' }}
         with:
@@ -134,7 +134,7 @@ jobs:
       env-endpoints: ${{ env.BNS_ENV_ENDPOINTS }}
       env-created: ${{ env.BNS_ENV_CREATED }}
     steps:
-      - name: Comment PR Environment will be deployed
+      - name: Comment with PR Environment will be deployed
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.pr-number != '' }}
         with:
@@ -142,7 +142,7 @@ jobs:
             ### :rocket: [Bunnyshell](https://www.bunnyshell.com) Preview Environment will be deployed
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: setup-yq
+      - name: Setup yq
         uses: frenck/action-setup-yq@v1
       - name: Check out the repo
         uses: actions/checkout@v3
@@ -157,7 +157,10 @@ jobs:
         if: ${{ inputs.pr-number != '' }}
         with:
           image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
-          options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }} -v ${{ github.env }}:/github/envs.txt
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -v ${{ github.env }}:/github/envs.txt
+            -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
             set -e
   
@@ -165,8 +168,8 @@ jobs:
               | jq -r "try ._embedded.item[0].id | select (.!=null)"`
   
             if [ -z "$BNS_ENV_ID" ]; then
-              echo "Could not find environment with label 'auto-gha=pr-${{ inputs.pr-number }}'."
-              echo ":speech_balloon: Could not find an existing environment with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> $GITHUB_STEP_SUMMARY
+              echo "No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'."
+              echo ":speech_balloon: No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
             
               exit 1
             fi
@@ -186,6 +189,8 @@ jobs:
   
             echo "BNS_ENV_ID=`bns environments show --non-interactive -o json \
               | jq -r 'try .id | select (.!=null)'`" >> /github/envs.txt
+            
+            echo "Environment ID is ${{ inputs.env-id || env.BNS_ENV_ID }}"
       - name: Prepare bunnyshell.yaml
         run: |
           set -e
@@ -211,6 +216,7 @@ jobs:
             -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
             -v ${{ github.workspace }}:/work
             -v ${{ github.env }}:/github/envs.txt
+            -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
             set -e
   
@@ -226,9 +232,9 @@ jobs:
   
             echo "BNS_ENV_ID=`echo "$CREATE_ENV_OUTPUT" | jq -r '.id'`" >> /github/envs.txt
             
-            echo "Environment created"
-            echo ":white_check_mark: Environment created" >> $GITHUB_STEP_SUMMARY
-      - name: Update comment for PR Environment deploying
+            echo "Environment created (ID $CREATE_ENV_OUTPUT" | jq -r '.id'`)"
+            echo ":white_check_mark: Environment created (ID $CREATE_ENV_OUTPUT" | jq -r '.id'`)" >> /github/step_summary.txt
+      - name: Comment with PR Environment deploying
         uses: thollander/actions-comment-pull-request@v2
         if: "${{ env.BNS_ENV_ID != '' }}"
         with:
@@ -238,7 +244,7 @@ jobs:
             Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: Update Environment
+      - name: Update Environment definition
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID != '' }}"
         with:
@@ -247,11 +253,12 @@ jobs:
             -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
             -e BUNNYSHELL_ENVIRONMENT=${{ env.BNS_ENV_ID }}
             -v ${{ github.workspace }}:/work
+            -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
             bns environments update-configuration --from-path /work/bunnyshell_wf_updated.yaml --non-interactive -o stylish
             
             echo "Environment definition updated"
-            echo ":white_check_mark: Environment definition updated" >> $GITHUB_STEP_SUMMARY
+            echo ":white_check_mark: Environment definition updated" >> /github/step_summary.txt
       - name: Deploy Environment
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID != '' }}"
@@ -261,6 +268,7 @@ jobs:
             -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
             -e BUNNYSHELL_ENVIRONMENT=${{ env.BNS_ENV_ID }}
             -v ${{ github.env }}:/github/envs.txt
+            -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
             set -e
   
@@ -274,9 +282,9 @@ jobs:
             echo "$ENDPOINTS_OUTPUT" | jq -r '.|map({name, endpoints: .endpoints| join("<br />")}) | .[] |  "|\(.name)|\(.endpoints)|"' >> /github/envs.txt
             echo "EOF" >> /github/envs.txt
             
-            echo "Environment deployed"
-            echo ":white_check_mark: Environment deployed" >> $GITHUB_STEP_SUMMARY
-      - name: Comment PR Environment deployed
+            echo "Environment deployed successfully"
+            echo ":white_check_mark: Environment deployed successfully" >> /github/step_summary.txt
+      - name: Comment with PR Environment deployed
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.comment-on-pr && !inputs.deploy-as-stopped }}
         with:
@@ -291,11 +299,12 @@ jobs:
   
             Available commands:
             - :red_circle: `/bns:stop` to stop the environment
+            - :large_blue_circle: `/bns:start` to stop the environment
             - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: Comment PR Environment deployment failed
+      - name: Comment with PR Environment deployment failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
         with:
@@ -312,6 +321,15 @@ jobs:
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
+      - name: Evauate "deploy-as-stopped" option
+        run: |
+          if [ ${{ inputs.deploy-as-stopped }} ]; then
+            echo 'Environment will be stopped (see `deploy-as-stopped` option)'
+            echo ':speech_balloon: Environment will be stopped (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+          else
+            echo 'Environment will remain running (see `deploy-as-stopped` option)'
+            echo ':speech_balloon: Environment will remain running (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+          fi
   stop:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
@@ -325,17 +343,18 @@ jobs:
           options: >
             -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
             -e BUNNYSHELL_ENVIRONMENT=${{ needs.deploy.outputs.env-id }}
+            -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
             bns environments stop --non-interactive -o stylish
             
             echo "Environment stopped after deployment (see `deploy-as-stopped` option)"
-            echo ":white_check_mark: Environment stopped after deployment (see `deploy-as-stopped` option)" >> $GITHUB_STEP_SUMMARY
-      - name: Comment PR
+            echo ":white_check_mark: Environment stopped after deployment (see `deploy-as-stopped` option)" >> /github/step_summary.txt
+      - name: Comment with PR Environment stopped
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.comment-on-pr }}
         with:
           message: |
-            ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created - now stopped
+            ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created and stopped
             
             Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   
@@ -350,7 +369,7 @@ jobs:
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment creation failed
+            ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created, but not stopped
             
             Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   

@@ -63,7 +63,7 @@ jobs:
       env-id: ${{ env.BNS_ENV_ID }}
       env-endpoints: ${{ env.BNS_ENV_ENDPOINTS }}
     steps:
-      - name: Comment PR Environment will be deployed
+      - name: Comment with PR Environment will be deployed
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.pr-number != '' }}
         with:
@@ -78,6 +78,8 @@ jobs:
           cat <<EOFBNSYAML > bunnyshell_updated.yaml
           ${{ inputs.bunnyshell-yaml-contents }}
           EOFBNSYAML
+          
+          echo "bunnyshell_updated.yaml file written"
 
           if [ "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" != "" ]; then
             gpg --decrypt --quiet --batch --passphrase "${{ secrets.bunnyshell-yaml-contents-encryption-passphrase }}" --output bunnyshell_updated_decrypted.yaml <(cat bunnyshell_updated.yaml | base64 -d)
@@ -100,8 +102,8 @@ jobs:
               | jq -r "try ._embedded.item[0].id | select (.!=null)"`
   
             if [ -z "$BNS_ENV_ID" ]; then
-              echo "Could not find environment with label 'auto-gha=pr-${{ inputs.pr-number }}'."
-              echo ":speech_balloon: Could not find an existing environment with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
+              echo "No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'."
+              echo ":speech_balloon: No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
             fi
   
             echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
@@ -119,6 +121,8 @@ jobs:
   
             echo "BNS_ENV_ID=`bns environments show --non-interactive -o json \
               | jq -r 'try .id | select (.!=null)'`" >> /github/envs.txt
+            
+            echo "Environment ID is ${{ inputs.env-id || env.BNS_ENV_ID }}"
       - name: Create Environment
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID == '' }}"
@@ -144,9 +148,9 @@ jobs:
   
             echo "BNS_ENV_ID=`echo "$CREATE_ENV_OUTPUT" | jq -r '.id'`" >> /github/envs.txt
             
-            echo "Environment created"
-            echo ":white_check_mark: Environment created" >> /github/step_summary.txt
-      - name: Update comment for PR Environment deploying
+            echo "Environment created (ID $CREATE_ENV_OUTPUT" | jq -r '.id'`)"
+            echo ":white_check_mark: Environment created (ID $CREATE_ENV_OUTPUT" | jq -r '.id'`)" >> /github/step_summary.txt
+      - name: Comment with PR Environment deploying
         uses: thollander/actions-comment-pull-request@v2
         if: "${{ env.BNS_ENV_ID != '' }}"
         with:
@@ -156,7 +160,7 @@ jobs:
             Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: Update Environment
+      - name: Update Environment definition
         uses: addnab/docker-run-action@v3
         if: "${{ env.BNS_ENV_ID != '' }}"
         with:
@@ -194,9 +198,9 @@ jobs:
             echo "$ENDPOINTS_OUTPUT" | jq -r '.|map({name, endpoints: .endpoints| join("<br />")}) | .[] |  "|\(.name)|\(.endpoints)|"' >> /github/envs.txt
             echo "EOF" >> /github/envs.txt
             
-            echo "Environment deployed"
-            echo ":white_check_mark: Environment deployed" >> /github/step_summary.txt
-      - name: Comment PR Environment deployed
+            echo "Environment deployed successfully"
+            echo ":white_check_mark: Environment deployed successfully" >> /github/step_summary.txt
+      - name: Comment with PR Environment deployed
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && (true || !inputs.deploy-as-stopped) }}
         with:
@@ -216,7 +220,7 @@ jobs:
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: Comment PR Environment deployment failed
+      - name: Comment with PR Environment deployment failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
         with:
@@ -232,6 +236,15 @@ jobs:
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
+      - name: Evauate "deploy-as-stopped" option
+        run: |
+          if [ ${{ inputs.deploy-as-stopped }} ]; then
+            echo 'Environment will be stopped (see `deploy-as-stopped` option)'
+            echo ':speech_balloon: Environment will be stopped (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+          else
+            echo 'Environment will remain running (see `deploy-as-stopped` option)'
+            echo ':speech_balloon: Environment will remain running (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+          fi
   stop:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
@@ -251,12 +264,12 @@ jobs:
             
             echo "Environment stopped after deployment (see `deploy-as-stopped` option)"
             echo ":white_check_mark: Environment stopped after deployment (see `deploy-as-stopped` option)" >> /github/step_summary.txt
-      - name: Comment PR
+      - name: Comment with PR Environment stopped
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.comment-on-pr }}
         with:
           message: |
-            ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created - now stopped
+            ### :white_check_mark: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created and stopped
             
             Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
   
@@ -266,12 +279,12 @@ jobs:
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
-      - name: Comment PR Environment stopping failed
+      - name: Comment with PR Environment stopping failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment creation failed
+            ### :exclamation: [Bunnyshell](https://www.bunnyshell.com) Preview Environment created, but not stopped
             
             Environment details and logs: https://environments.bunnyshell.com/bridge/environment/${{ env.BNS_ENV_ID }}
             

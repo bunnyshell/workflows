@@ -41,7 +41,7 @@ jobs:
         && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
       ) }}
     steps:
-      - name: Check bunnyshell.yaml
+      - name: Check bunnyshell.yaml input
         if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
         run: |
           echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
@@ -51,7 +51,7 @@ jobs:
         if: ${{ inputs.restricted-files != '' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
         with:
           fetch-depth: 0
-      - name: Get restricted files changes
+      - name: Test for restricted files changes
         id: changed-restricted-files
         if: ${{ inputs.restricted-files != '' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
         uses: tj-actions/changed-files@v36
@@ -60,13 +60,14 @@ jobs:
       - name: Abort due to restricted files changes
         if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
         run: |
-          echo "Restricted files changes detected."
+          echo "Restricted files changes were detected."
+          echo ":exclamation: Restricted files changes were detected." >> $GITHUB_STEP_SUMMARY
   prepare:
     name: Prepare bunnyshell.yaml
     needs: checks
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - name: setup-yq
+      - name: Setup yq
         if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
         uses: frenck/action-setup-yq@v1
       - name: Check out the repo
@@ -75,7 +76,7 @@ jobs:
         with:
           ref: ${{ inputs.git-ref }}
           fetch-depth: 0
-      - name: Write bunnyshell.yaml artifact
+      - name: Prepare bunnyshell.yaml
         if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
         run: |
           set -e
@@ -91,7 +92,7 @@ jobs:
           
           echo 'Environment definition (`bunnyshell.yaml`) prepared'
           echo ':white_check_mark: Environment definition (`bunnyshell.yaml`) prepared' >> $GITHUB_STEP_SUMMARY
-      - name: Write data artifacts
+      - name: Prepare deployment flags
         run: |
           set -e
 
@@ -106,7 +107,7 @@ jobs:
           
           echo "Deployment flags prepared"
           echo ":white_check_mark: Deployment flags prepared" >> $GITHUB_STEP_SUMMARY
-      - name: Upload bunnyshell.yaml as artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: bunnyshell
