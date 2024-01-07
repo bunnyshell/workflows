@@ -146,10 +146,12 @@ jobs:
               exit 1
             fi
   
-            echo "BNS_ENV_ID=`echo "$CREATE_ENV_OUTPUT" | jq -r '.id'`" >> /github/envs.txt
+            BNS_ENV_ID=`echo "$CREATE_ENV_OUTPUT" | jq -r '.id'`
             
-            echo "Environment created (ID $CREATE_ENV_OUTPUT" | jq -r '.id'`)"
-            echo ":white_check_mark: Environment created (ID $CREATE_ENV_OUTPUT" | jq -r '.id'`)" >> /github/step_summary.txt
+            echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
+            
+            echo "Environment created (ID $BNS_ENV_ID)"
+            echo ":white_check_mark: Environment created (ID $BNS_ENV_ID)" >> /github/step_summary.txt
       - name: Comment with PR Environment deploying
         uses: thollander/actions-comment-pull-request@v2
         if: "${{ env.BNS_ENV_ID != '' }}"
