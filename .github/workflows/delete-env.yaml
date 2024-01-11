@@ -13,9 +13,10 @@ on:
       env-id:
         description: The ID of the Environment to delete
         type: string
-      env-name:
-        description: The name of the Environment to delete
+      pr-number:
+        description: The number of the PR on which to write the comments
         type: string
+        required: false
       allowed-users:
         description: The list of the allowed usernames (JSON list). Use '*' for all users.
         type: string
@@ -26,7 +27,7 @@ on:
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
-        default: v0.16.0
+        default: v0.18.0
     secrets:
       bunnyshell-access-token:
         required: true
@@ -49,10 +50,10 @@ jobs:
       )}}
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - name: Validate env ID or name
-        if: "${{ inputs.env-id == '' && inputs.env-name == '' }}"
+      - name: Validate env ID or PR number
+        if: "${{ inputs.env-id == '' && inputs.pr-number == '' }}"
         run: |
-          echo "One of env-id or env-name inputs is required."
+          echo "One of env-id or pr-number inputs is required."
           exit 1
   delete:
     name: Delete Environment
@@ -63,20 +64,30 @@ jobs:
     steps:
     - name: Search for Environment
       uses: addnab/docker-run-action@v3
-      if: ${{ inputs.env-name != '' }}
+      if: ${{ inputs.pr-number != '' }}
       with:
         image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
-        options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }} -v ${{ github.env }}:/github/envs.txt
+        options: >
+          -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+          -v ${{ github.env }}:/github/envs.txt
+          -v ${{ github.step_summary }}:/github/step_summary.txt
         run: |
           set -e
 
-          BNS_ENV_ID=`bns environments list --search "${{ inputs.env-name }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+          BNS_ENV_ID=`bns environments list --label "auto-gha=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
             | jq -r "try ._embedded.item[0].id | select (.!=null)"`
           
           if [ -z "$BNS_ENV_ID" ]; then
-            echo "Could not find environment with name '${{ inputs.env-name }}'"
+            echo "No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'."
+            echo ":speech_balloon: No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
           
-            echo "ERROR_MESSAGE=Could not find environment with name '${{ inputs.env-name }}'." >> /github/envs.txt
+            echo "The environment was already deleted."
+            echo ":white_check_mark: The environment was already deleted." >> /github/step_summary.txt
+          
+            exit 0
+          else
+              echo "Found environment ID $BNS_ENV_ID"
+              echo ":mag: Found environment ID $BNS_ENV_ID." >> /github/step_summary.txt
           fi
           
           echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
@@ -88,48 +99,54 @@ jobs:
         options: >
           -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
           -e BUNNYSHELL_ENVIRONMENT=${{ inputs.env-id || env.BNS_ENV_ID }}
+          -v ${{ github.env }}:/github/envs.txt
+          -v ${{ github.step_summary }}:/github/step_summary.txt
         run: |
-          
-          BNS_ENV_ID=`bns environments show --non-interactive -o json | jq -r '.id'`
-          if [ "$BNS_ENV_ID" = "null" ]; then
-            echo "Could not find environment '$BUNNYSHELL_ENVIRONMENT'."
-
-            echo "ERROR_MESSAGE=Could not find environment '$BUNNYSHELL_ENVIRONMENT'." >> /github/envs.txt
-          
-            exit 1
-          fi
-          
           ENV_OPERATION_STATUS=`bns environments show --non-interactive -o json | jq -r '.operationStatus'`
-          if [ "$ENV_OPERATION_STATUS" != "stopped" ] && [ "$ENV_OPERATION_STATUS" != "running" ] && [ "$ENV_OPERATION_STATUS" != "draft"] && [ "$ENV_OPERATION_STATUS" != "aborted" ]; then
+          if [ "$ENV_OPERATION_STATUS" != "stopped" ] && [ "$ENV_OPERATION_STATUS" != "running" ] && [ "$ENV_OPERATION_STATUS" != "draft" ] && [ "$ENV_OPERATION_STATUS" != "aborted" ]; then
             echo "ERROR_MESSAGE=The Environment cannot be deleted right now. The current operation status is '$ENV_OPERATION_STATUS'." >> /github/envs.txt
-
-            echo "The Environment cannot be deleted right now. The current operation status is '$ENV_OPERATION_STATUS'."
+            
+            echo "The Environment cannot be deleted right now. The current operation status is '$ENV_OPERATION_STATUS'."          
+            echo ":exclamation: The Environment cannot be deleted right now. The current operation status is '$ENV_OPERATION_STATUS'." >> /github/step_summary.txt
+            
             exit 1
           fi
           
           bns environments delete --non-interactive -o stylish
-    - name: Comment PR Environment deleted
+          
+          if [ $? -eq 0 ]; then
+            echo "The environment was successfully deleted."
+            echo ":white_check_mark: The environment was successfully deleted." >> /github/step_summary.txt
+          else
+            echo "The environment was not deleted."
+            echo ":exclamation: The environment was not deleted." >> /github/step_summary.txt
+          
+            exit 1
+          fi
+    - name: Comment with PR Environment deleted
       uses: thollander/actions-comment-pull-request@v2
       if: ${{ inputs.comment-on-pr && env.BNS_ENV_ID }}
       with:
         message: |
-          ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment deleted
+          ### :x: Preview Environment deleted from [Bunnyshell](https://www.bunnyshell.com)
 
           Available commands:
-            - `/bns:deploy` to redeploy the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
         comment_tag: bunnyshell-preview-env
-    - name: Comment PR Environment deleting failed
+    - name: Comment with PR Environment deleting failed
       if: ${{ failure() && inputs.comment-on-pr }}
       uses: thollander/actions-comment-pull-request@v2
       with:
         message: |
-          ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment deleting failed
+          ### :exclamation: Preview Environment delete from [Bunnyshell](https://www.bunnyshell.com) failed
           
           ${{ env.ERROR_MESSAGE }}
 
           Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
+          
+          See: [Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
 
           Available commands:
-          - `/bns:deploy` to redeploy the environment
-          - `/bns:delete` to remove the environment
+          - :rocket: `/bns:deploy` to redeploy the environment
+          - :x: `/bns:delete` to remove the environment
         comment_tag: bunnyshell-preview-env

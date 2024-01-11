@@ -13,7 +13,7 @@ on:
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
-        default: v0.16.0
+        default: v0.18.0
       env-name-pr-number-pattern:
         description: The pattern to use to extract the PR number from the environment name
         type: string
@@ -43,7 +43,7 @@ jobs:
             CURRENT_ENVIRONMENTS='[]'
             NEXT_PAGE=1
             while [ "$NEXT_PAGE" != "" ]; do
-              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --page "$NEXT_PAGE" --non-interactive -o json`
+              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --label "auto-gha=" --page "$NEXT_PAGE" --non-interactive -o json`
             
               ENVS_COUNT=`echo $ENVIRONMENTS_LIST_JSON | jq 'try ._embedded.item | length'`
               if [ "$ENVS_COUNT" = "0" ]; then
@@ -52,6 +52,7 @@ jobs:
             
               PAGE_ENVIRONMENTS=`echo "$ENVIRONMENTS_LIST_JSON" | jq -c 'try ._embedded.item | map({id: .id, pr_number: .name | capture("${{ inputs.env-name-pr-number-pattern }}").v})'`
 
+              # todo: extract name from label
               CURRENT_ENVIRONMENTS=`jq -c --argjson arr1 "$CURRENT_ENVIRONMENTS" --argjson arr2 "$PAGE_ENVIRONMENTS" -n '$arr1 + $arr2 | group_by(.id) | map(.[-1])'`
             
               NEXT_PAGE=`echo "$ENVIRONMENTS_LIST_JSON" | jq -r '._links.next.href // empty' | sed -E 's/.*page=([0-9]+).*/\1/'`
@@ -76,7 +77,7 @@ jobs:
             
             let pull_request;
             for (const pr_to_check of prs_to_check) {
-              console.log(`Checking PR ${pr_to_check.pr_number}`);
+              console.log(`Checking PR ${pr_to_check.pr_number}...`);
 
               try {
                 response = await github.rest.pulls.get({
@@ -86,7 +87,7 @@ jobs:
                 })
               } catch (e) {
                 if (e.status === 404) {
-                  console.log('PR not found');
+                  console.log('PR not found.');
                   if (include_not_found) {
                     envs_ids.push(pr_to_check.id)
                   }
@@ -98,13 +99,20 @@ jobs:
               }
             
               pull_request_state = response?.data?.state;
-              console.log(`Got PR in state ${pull_request_state}`)
+              
               if (pull_request_state === 'closed') {
                 envs_ids.push(pr_to_check.id)
+                console.log(`PR is in state ${pull_request_state}, will delete the environment.`)
+              } else {
+                console.log(`PR is in state ${pull_request_state}, will skip the environment.`)
               }
             }
             
-            console.log('Will delete Environments: ' + envs_ids.join(','))
+            if (envs_ids.length) {
+              console.log('Will delete Environments: ' + envs_ids.join(','))
+            } else {
+              console.log('No environments to delete.');
+            }
             
             return envs_ids.join(',')
       - name: Delete Bunnyshell environments

@@ -13,9 +13,10 @@ on:
       env-id:
         description: The ID of the Environment to start
         type: string
-      env-name:
-        description: The name of the Environment to start
+      pr-number:
+        description: The number of the PR on which to write the comments
         type: string
+        required: false
       allowed-users:
         description: The list of the allowed usernames (JSON list). Use '*' for all users.
         type: string
@@ -26,7 +27,7 @@ on:
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
-        default: v0.16.0
+        default: v0.18.0
     secrets:
       bunnyshell-access-token:
         required: true
@@ -53,10 +54,10 @@ jobs:
       }}
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - name: Validate env ID or name
-        if: "${{ inputs.env-id == '' && inputs.env-name == '' }}"
+      - name: Validate env ID or PR number
+        if: "${{ inputs.env-id == '' && inputs.pr-number == '' }}"
         run: |
-          echo "One of env-id or env-name inputs is required."
+          echo "One of env-id or pr-number inputs is required."
           exit 1
   start:
     name: Start Environment
@@ -68,20 +69,27 @@ jobs:
     steps:
       - name: Search for Environment
         uses: addnab/docker-run-action@v3
-        if: ${{ inputs.env-name != '' }}
+        if: ${{ inputs.pr-number != '' }}
         with:
           image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
-          options: -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }} -v ${{ github.env }}:/github/envs.txt
+          options: >
+            -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
+            -v ${{ github.env }}:/github/envs.txt
+            -v ${{ github.step_summary }}:/github/step_summary.txt
           run: |
             set -e
             
-            BNS_ENV_ID=`bns environments list --search "${{ inputs.env-name }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+            BNS_ENV_ID=`bns environments list --label "auto-gha=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
               | jq -r "try ._embedded.item[0].id | select (.!=null)"`
 
             if [ -z "$BNS_ENV_ID" ]; then
-              echo "Could not find environment with name '${{ inputs.env-name }}'"
+              echo "No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'."
+              echo ":exclamation: No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
             
               exit 1
+            else
+              echo "Found environment ID $BNS_ENV_ID"
+              echo ":mag: Found environment ID $BNS_ENV_ID." >> /github/step_summary.txt
             fi
 
             echo "BNS_ENV_ID=$BNS_ENV_ID" >> /github/envs.txt
@@ -93,21 +101,33 @@ jobs:
             -e BUNNYSHELL_TOKEN=${{ secrets.bunnyshell-access-token }}
             -e BUNNYSHELL_ENVIRONMENT=${{ inputs.env-id || env.BNS_ENV_ID }}
             -v ${{ github.env }}:/github/envs.txt
-          run: |
-            set -e
-            
+            -v ${{ github.step_summary }}:/github/step_summary.txt
+          run: |            
             ENV_OPERATION_STATUS=`bns environments show --non-interactive -o json | jq -r '.operationStatus'`
             if [ "$ENV_OPERATION_STATUS" != "stopped" ] && [ "$ENV_OPERATION_STATUS" != "running" ]; then
               echo "ERROR_MESSAGE=The Environment cannot be started right now. The current operation status is '$ENV_OPERATION_STATUS'." >> /github/envs.txt
             
               echo "The Environment cannot be started right now. The current operation status is '$ENV_OPERATION_STATUS'."
+              echo ":exclamation: The Environment cannot be started right now. The current operation status is '$ENV_OPERATION_STATUS'." >> /github/step_summary.txt
+              
               exit 1
             fi
             
             if [ "$ENV_OPERATION_STATUS" != "running" ]; then
               bns environments start --non-interactive -o stylish
+            
+              if [ $? -eq 0 ]; then
+                echo "The environment was successfully started."
+                echo ":white_check_mark: The environment was successfully started." >> /github/step_summary.txt
+              else
+                echo "The environment was not started."
+                echo ":exclamation: The environment was not started." >> /github/step_summary.txt
+            
+                exit 1
+              fi
             else
-              echo "The environment is already running."
+              echo "The environment was already running."
+              echo ":white_check_mark: The environment was already running." >> /github/step_summary.txt
             fi
             
             ENDPOINTS_OUTPUT=`bns environments endpoints --non-interactive -o json`
@@ -117,35 +137,39 @@ jobs:
             echo "ENDPOINTS_ROWS<<EOF" >> /github/envs.txt
             echo "$ENDPOINTS_OUTPUT" | jq -r '.|map({name, endpoints: .endpoints| join("<br />")}) | .[] |  "|\(.name)|\(.endpoints)|"' >> /github/envs.txt
             echo "EOF" >> /github/envs.txt
-      - name: Comment PR Environment started
+      - name: Comment with PR Environment started
         uses: thollander/actions-comment-pull-request@v2
         if: ${{ inputs.comment-on-pr }}
         with:
           message: |
-            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment started
+            ### :white_check_mark: Preview Environment started on [Bunnyshell](https://www.bunnyshell.com)
             
             |Component|Endpoints|
             |---------|---------|
             ${{ env.ENDPOINTS_ROWS }}
             
+            See: [Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+            
             Available commands:
-            - `/bns:stop` to stop the environment
-            - `/bns:deploy` to redeploy the environment
-            - `/bns:delete` to remove the environment
+            - :red_circle: `/bns:stop` to stop the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
+            - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
-      - name: Comment PR Environment starting failed
+      - name: Comment with PR Environment starting failed
         if: ${{ failure() && inputs.comment-on-pr }}
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### [Bunnyshell](https://www.bunnyshell.com) Preview Environment starting failed
+            ### :exclamation: Preview Environment start on [Bunnyshell](https://www.bunnyshell.com) failed
             
             ${{ env.ERROR_MESSAGE }}
             
             Check ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
             
+            See: [Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+            
             Available commands:
-            - `/bns:start` to start the environment
-            - `/bns:deploy` to redeploy the environment
-            - `/bns:delete` to remove the environment
+            - :large_blue_circle: `/bns:start` to stop the environment
+            - :rocket: `/bns:deploy` to redeploy the environment
+            - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
