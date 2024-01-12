@@ -69,19 +69,19 @@ jobs:
           retries: 3
           result-encoding: string
           script: |
-            const envs_ids = []
+            const envs_to_delete = []
             
             const include_not_found = ${{ inputs.include-not-found }}
             console.log(include_not_found)
-            const prs_to_check = JSON.parse(process.env.CURRENT_ENVIRONMENTS)
+            const envs_to_check = JSON.parse(process.env.CURRENT_ENVIRONMENTS)
             
             let pull_request;
-            for (const pr_to_check of prs_to_check) {
-              console.log(`Checking PR ${pr_to_check.pr_number}...`);
+            for (const env_to_check of envs_to_check) {
+              console.log(`Checking PR ${env_to_check.pr_number}...`);
 
               try {
                 response = await github.rest.pulls.get({
-                  pull_number: pr_to_check.pr_number,
+                  pull_number: env_to_check.pr_number,
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                 })
@@ -89,7 +89,7 @@ jobs:
                 if (e.status === 404) {
                   console.log('PR not found.');
                   if (include_not_found) {
-                    envs_ids.push(pr_to_check.id)
+                    envs_to_delete.push(env_to_check.id)
                   }
 
                   continue;
@@ -101,20 +101,20 @@ jobs:
               pull_request_state = response?.data?.state;
               
               if (pull_request_state === 'closed') {
-                envs_ids.push(pr_to_check.id)
+                envs_to_delete.push(env_to_check.id)
                 console.log(`PR is in state ${pull_request_state}, will delete the environment.`)
               } else {
                 console.log(`PR is in state ${pull_request_state}, will skip the environment.`)
               }
             }
             
-            if (envs_ids.length) {
-              console.log('Will delete Environments: ' + envs_ids.join(','))
+            if (envs_to_delete.length) {
+              console.log('Will delete Environments: ' + envs_to_delete.join(','))
             } else {
               console.log('No environments to delete.');
             }
             
-            return envs_ids.join(',')
+            return envs_to_delete.join(',')
       - name: Delete Bunnyshell environments
         uses: addnab/docker-run-action@v3
         if: ${{ steps.check-the-prs-statuses.outputs.result != '' }}
