@@ -41,7 +41,7 @@ jobs:
         && (inputs.allowed-users == '*' || contains(fromJSON(inputs.allowed-users), github.event.sender.login))
       ) }}
     steps:
-      - name: Validate inputs
+      - name: Check bunnyshell.yaml input
         if: ${{ inputs.bunnyshell-yaml-path == '' && inputs.bunnyshell-yaml-contents == '' }}
         run: |
           echo "Either one of bunnyshell-yaml-path or bunnyshell-yaml-contents is required."
@@ -51,22 +51,37 @@ jobs:
         if: ${{ inputs.restricted-files != '' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
         with:
           fetch-depth: 0
-      - name: Get restricted files changes
+      - name: Test for restricted files changes
         id: changed-restricted-files
         if: ${{ inputs.restricted-files != '' && env.IS_APPROVED_DEPLOY_COMMAND == 'false' }}
         uses: tj-actions/changed-files@v36
         with:
           files: ${{ inputs.restricted-files }}
+      - name: Comment with PR Environment paused
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ inputs.comment-on-pr && steps.changed-restricted-files.outputs.any_modified == 'true' }}
+        with:
+          message: |
+            ### Preview Environment creation on [Bunnyshell](https://www.bunnyshell.com) paused
+
+            #### Needs approval due to restricted files changes
+
+            Add a comment containing `/bns:deploy` to approve the creation of the environment.
+
+            Please note that you must be in the allowed users list. See `allowed-users` option.
+          comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Abort due to restricted files changes
         if: ${{ steps.changed-restricted-files.outputs.any_modified == 'true' }}
         run: |
-          echo "Restricted files changes detected."
+          echo "Restricted files changes detected, aborting. The deployment will need explicit permission. See comment on PR for instructions."
+          echo ":exclamation: Restricted files changes detected, aborting. The deployment will need explicit permission. See comment on PR for instructions." >> $GITHUB_STEP_SUMMARY
   prepare:
     name: Prepare bunnyshell.yaml
     needs: checks
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - name: setup-yq
+      - name: Setup yq
         if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
         uses: frenck/action-setup-yq@v1
       - name: Check out the repo
@@ -75,7 +90,7 @@ jobs:
         with:
           ref: ${{ inputs.git-ref }}
           fetch-depth: 0
-      - name: Write bunnyshell.yaml artifact
+      - name: Prepare bunnyshell.yaml
         if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
         run: |
           set -e
@@ -88,7 +103,10 @@ jobs:
           else
             printf "%s" "${{ inputs.bunnyshell-yaml-contents }}" > .bunnyshell-tmp/artifact/bunnyshell.yaml
           fi
-      - name: Write data artifacts
+          
+          echo 'Environment definition (`bunnyshell.yaml`) prepared'
+          echo ':white_check_mark: Environment definition (`bunnyshell.yaml`) prepared' >> $GITHUB_STEP_SUMMARY
+      - name: Prepare deployment flags
         run: |
           set -e
 
@@ -100,9 +118,17 @@ jobs:
             "skip_deployment": ${{ needs.checks.outputs.skip-deployment }}
           }
           EOF
-      - name: Upload bunnyshell.yaml as Artifact
+          
+          echo "Deployment flags prepared"
+          echo ":white_check_mark: Deployment flags prepared" >> $GITHUB_STEP_SUMMARY
+      - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: bunnyshell
           path: .bunnyshell-tmp/artifact/
           retention-days: 1
+      - name: Output summary
+        if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
+        run: |        
+          echo 'Environment definition (`bunnyshell.yaml`) and deployment flags uploaded'
+          echo ':white_check_mark: Environment definition (`bunnyshell.yaml`) and deployment flags uploaded' >> $GITHUB_STEP_SUMMARY

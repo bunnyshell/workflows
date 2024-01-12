@@ -13,7 +13,7 @@ on:
       bunnyshell-cli-version:
         description: The version of the Bunnyshell CLI to use
         type: string
-        default: v0.16.0
+        default: v0.18.2
       env-name-pr-number-pattern:
         description: The pattern to use to extract the PR number from the environment name
         type: string
@@ -43,7 +43,7 @@ jobs:
             CURRENT_ENVIRONMENTS='[]'
             NEXT_PAGE=1
             while [ "$NEXT_PAGE" != "" ]; do
-              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --page "$NEXT_PAGE" --non-interactive -o json`
+              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --label "auto-gha=" --page "$NEXT_PAGE" --non-interactive -o json`
             
               ENVS_COUNT=`echo $ENVIRONMENTS_LIST_JSON | jq 'try ._embedded.item | length'`
               if [ "$ENVS_COUNT" = "0" ]; then
@@ -52,6 +52,7 @@ jobs:
             
               PAGE_ENVIRONMENTS=`echo "$ENVIRONMENTS_LIST_JSON" | jq -c 'try ._embedded.item | map({id: .id, pr_number: .name | capture("${{ inputs.env-name-pr-number-pattern }}").v})'`
 
+              # todo: extract name from label
               CURRENT_ENVIRONMENTS=`jq -c --argjson arr1 "$CURRENT_ENVIRONMENTS" --argjson arr2 "$PAGE_ENVIRONMENTS" -n '$arr1 + $arr2 | group_by(.id) | map(.[-1])'`
             
               NEXT_PAGE=`echo "$ENVIRONMENTS_LIST_JSON" | jq -r '._links.next.href // empty' | sed -E 's/.*page=([0-9]+).*/\1/'`
@@ -68,27 +69,27 @@ jobs:
           retries: 3
           result-encoding: string
           script: |
-            const envs_ids = []
+            const envs_to_delete = []
             
             const include_not_found = ${{ inputs.include-not-found }}
             console.log(include_not_found)
-            const prs_to_check = JSON.parse(process.env.CURRENT_ENVIRONMENTS)
+            const envs_to_check = JSON.parse(process.env.CURRENT_ENVIRONMENTS)
             
             let pull_request;
-            for (const pr_to_check of prs_to_check) {
-              console.log(`Checking PR ${pr_to_check.pr_number}`);
+            for (const env_to_check of envs_to_check) {
+              console.log(`Checking PR ${env_to_check.pr_number}...`);
 
               try {
                 response = await github.rest.pulls.get({
-                  pull_number: pr_to_check.pr_number,
+                  pull_number: env_to_check.pr_number,
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                 })
               } catch (e) {
                 if (e.status === 404) {
-                  console.log('PR not found');
+                  console.log('PR not found.');
                   if (include_not_found) {
-                    envs_ids.push(pr_to_check.id)
+                    envs_to_delete.push(env_to_check.id)
                   }
 
                   continue;
@@ -98,15 +99,22 @@ jobs:
               }
             
               pull_request_state = response?.data?.state;
-              console.log(`Got PR in state ${pull_request_state}`)
+              
               if (pull_request_state === 'closed') {
-                envs_ids.push(pr_to_check.id)
+                envs_to_delete.push(env_to_check.id)
+                console.log(`PR is in state ${pull_request_state}, will delete the environment.`)
+              } else {
+                console.log(`PR is in state ${pull_request_state}, will skip the environment.`)
               }
             }
             
-            console.log('Will delete Environments: ' + envs_ids.join(','))
+            if (envs_to_delete.length) {
+              console.log('Will delete Environments: ' + envs_to_delete.join(','))
+            } else {
+              console.log('No environments to delete.');
+            }
             
-            return envs_ids.join(',')
+            return envs_to_delete.join(',')
       - name: Delete Bunnyshell environments
         uses: addnab/docker-run-action@v3
         if: ${{ steps.check-the-prs-statuses.outputs.result != '' }}
