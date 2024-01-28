@@ -22,6 +22,10 @@ on:
         description: Whether to include environments that are not found (got deleted)
         type: boolean
         default: false
+      env-label:
+        description: The label prefix for automatic GitHub Actions
+        type: string
+        default: ${{ inputs.env-label }}
     secrets:
       bunnyshell-access-token:
         required: true
@@ -43,7 +47,7 @@ jobs:
             CURRENT_ENVIRONMENTS='[]'
             NEXT_PAGE=1
             while [ "$NEXT_PAGE" != "" ]; do
-              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --label "auto-gha=" --page "$NEXT_PAGE" --non-interactive -o json`
+              ENVIRONMENTS_LIST_JSON=`bns environments list --project ${{ inputs.project-id }} --label "${{ inputs.env-label }}=" --page "$NEXT_PAGE" --non-interactive -o json`
             
               ENVS_COUNT=`echo $ENVIRONMENTS_LIST_JSON | jq 'try ._embedded.item | length'`
               if [ "$ENVS_COUNT" = "0" ]; then

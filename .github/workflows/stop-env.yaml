@@ -28,6 +28,10 @@ on:
         description: The version of the Bunnyshell CLI to use
         type: string
         default: v0.18.2
+      env-label:
+        description: The label prefix for automatic GitHub Actions
+        type: string
+        default: ${{ inputs.env-label }}
     secrets:
       bunnyshell-access-token:
         required: true
@@ -75,12 +79,12 @@ jobs:
         run: |
           set -e
 
-          BNS_ENV_ID=`bns environments list --label "auto-gha=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+          BNS_ENV_ID=`bns environments list --label "${{ inputs.env-label }}=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
             | jq -r "try ._embedded.item[0].id | select (.!=null)"`
           
           if [ -z "$BNS_ENV_ID" ]; then
-            echo "No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'."
-            echo ":exclamation: No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
+            echo "No environment exists with label '${{ inputs.env-label }}=pr-${{ inputs.pr-number }}'."
+            echo ":exclamation: No environment exists with label '${{ inputs.env-label }}=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
           
             exit 1
           else
