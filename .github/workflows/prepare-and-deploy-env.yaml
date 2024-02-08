@@ -54,6 +54,10 @@ on:
         description: The version of the Bunnyshell CLI to use
         type: string
         default: v0.18.2
+      env-label:
+        description: The label prefix for automatic GitHub Actions
+        type: string
+        default: ${{ inputs.env-label }}
     secrets:
       bunnyshell-access-token:
         required: true
@@ -181,12 +185,12 @@ jobs:
           run: |
             set -e
   
-            BNS_ENV_ID=`bns environments list --label "auto-gha=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
+            BNS_ENV_ID=`bns environments list --label "${{ inputs.env-label }}=pr-${{ inputs.pr-number }}" --project ${{ inputs.project-id }} --non-interactive -o json \
               | jq -r "try ._embedded.item[0].id | select (.!=null)"`
   
             if [ -z "$BNS_ENV_ID" ]; then
-              echo "No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'."
-              echo ":speech_balloon: No environment exists with label 'auto-gha=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
+              echo "No environment exists with label '${{ inputs.env-label }}=pr-${{ inputs.pr-number }}'."
+              echo ":speech_balloon: No environment exists with label '${{ inputs.env-label }}=pr-${{ inputs.pr-number }}'." >> /github/step_summary.txt
             else
               echo "Found environment ID $BNS_ENV_ID"
               echo ":mag: Found environment ID $BNS_ENV_ID." >> /github/step_summary.txt
@@ -241,7 +245,7 @@ jobs:
             echo "BNS_ENV_CREATED=1" >> /github/envs.txt
   
             CREATE_ENV_OUTPUT=`bns environments create --name "${{ inputs.env-name }}" --from-path /work/bunnyshell_wf_updated.yaml \
-              --label "auto-gha=pr-${{ inputs.pr-number }}" \
+              --label "${{ inputs.env-label }}=pr-${{ inputs.pr-number }}" \
               --k8s "${{ inputs.cluster-id }}" --project ${{ inputs.project-id }} --non-interactive -o json`
             if [ "$?" != "0" ]; then
               echo "Failed to create the environment: $CREATE_ENV_OUTPUT"
