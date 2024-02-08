@@ -103,7 +103,7 @@ jobs:
           -v ${{ github.step_summary }}:/github/step_summary.txt
         run: |
           ENV_OPERATION_STATUS=`bns environments show --non-interactive -o json | jq -r '.operationStatus'`
-          if [ "$ENV_OPERATION_STATUS" != "stopped" ] && [ "$ENV_OPERATION_STATUS" != "running" ] && [ "$ENV_OPERATION_STATUS" != "draft" ] && [ "$ENV_OPERATION_STATUS" != "aborted" ]; then
+          if [ "$ENV_OPERATION_STATUS" != "draft" ] && [ "$ENV_OPERATION_STATUS" != "deployment_failed" ] && [ "$ENV_OPERATION_STATUS" != "running" ] && [ "$ENV_OPERATION_STATUS" != "stopped" ] && [ "$ENV_OPERATION_STATUS" != "stopping_failed" ] && [ "$ENV_OPERATION_STATUS" != "starting_failed" ]  && [ "$ENV_OPERATION_STATUS" != "deleting_failed" ] && [ "$ENV_OPERATION_STATUS" != "aborted" ]; then
             echo "ERROR_MESSAGE=The Environment cannot be deleted right now. The current operation status is '$ENV_OPERATION_STATUS'." >> /github/envs.txt
             
             echo "The Environment cannot be deleted right now. The current operation status is '$ENV_OPERATION_STATUS'."          

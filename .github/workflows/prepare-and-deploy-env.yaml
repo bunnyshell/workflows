@@ -392,7 +392,6 @@ jobs:
   
             Available commands:
             - :red_circle: `/bns:stop` to stop the environment
-            - :large_blue_circle: `/bns:start` to stop the environment
             - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
@@ -490,7 +489,7 @@ jobs:
         if: ${{ inputs.comment-on-pr }}
         with:
           message: |
-            ### :white_check_mark: Preview Environment created on [Bunnyshell](https://www.bunnyshell.com) and stopped
+            ### :white_check_mark: Preview Environment deployed on [Bunnyshell](https://www.bunnyshell.com) and stopped
             
             See: [Environment Details](https://environments.bunnyshell.com/b/environment/${{ needs.deploy.outputs.env-id }}) | [Deployment Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ needs.deploy.outputs.pipeline-id }}) | [Stop Pipeline Logs](https://environments.bunnyshell.com/b/pipeline/${{ env.BNS_PIPELINE_ID }})
   

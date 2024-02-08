@@ -169,7 +169,7 @@ jobs:
             See: [Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
             
             Available commands:
-            - :large_blue_circle: `/bns:start` to stop the environment
+            - :large_blue_circle: `/bns:start` to start again the environment
             - :rocket: `/bns:deploy` to redeploy the environment
             - :x: `/bns:delete` to remove the environment
           comment_tag: bunnyshell-preview-env
