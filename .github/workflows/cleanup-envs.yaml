@@ -25,7 +25,7 @@ on:
       env-label:
         description: The label prefix for automatic GitHub Actions
         type: string
-        default: ${{ inputs.env-label }}
+        default: auto-gha
     secrets:
       bunnyshell-access-token:
         required: true
