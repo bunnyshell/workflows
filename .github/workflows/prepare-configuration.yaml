@@ -122,11 +122,13 @@ jobs:
           echo "Deployment flags prepared"
           echo ":white_check_mark: Deployment flags prepared" >> $GITHUB_STEP_SUMMARY
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bunnyshell
           path: .bunnyshell-tmp/artifact/
           retention-days: 1
+          overwrite: true
+          include-hidden-files: true
       - name: Output summary
         if: ${{ needs.checks.outputs.skip-deployment == 'false' }}
         run: |        
