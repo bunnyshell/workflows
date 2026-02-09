@@ -32,6 +32,10 @@ on:
         description: The number of the PR on which to write the comments
         type: string
         required: false
+      create-no-deploy:
+        description: Just create the environment, do not deploy it.
+        type: boolean
+        default: false
       deploy-as-stopped:
         description: Deploy the environment and then stop it. Temporarily disabled.
         type: boolean
@@ -73,7 +77,7 @@ jobs:
         if: ${{ inputs.pr-number != '' }}
         with:
           message: |
-            ### :rocket: Preview Environment will be deployed on [Bunnyshell](https://www.bunnyshell.com)
+            ${{ fromJSON(inputs.create-no-deploy) && '### :rocket: Preview Environment will be created on [Bunnyshell](https://www.bunnyshell.com)' || '### :rocket: Preview Environment will be deployed on [Bunnyshell](https://www.bunnyshell.com)' }}
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Decrypt bunnyshell.yaml
@@ -162,7 +166,7 @@ jobs:
             echo ":white_check_mark: Environment created (ID $BNS_ENV_ID)" >> /github/step_summary.txt
       - name: Comment with PR Environment deploying
         uses: thollander/actions-comment-pull-request@v2
-        if: "${{ env.BNS_ENV_ID != '' }}"
+        if: "${{ env.BNS_ENV_ID != '' && !fromJSON(inputs.create-no-deploy)}}"
         with:
           message: |
             ### :rocket: Preview Environment is deploying on [Bunnyshell](https://www.bunnyshell.com)...
@@ -185,9 +189,23 @@ jobs:
             
             echo "Environment definition updated"
             echo ":white_check_mark: Environment definition updated" >> /github/step_summary.txt
+      - name: Comment with PR Environment created
+        uses: thollander/actions-comment-pull-request@v2
+        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && fromJSON(inputs.create-no-deploy) }}
+        with:
+          message: |
+            ### :white_check_mark: Preview Environment created on [Bunnyshell](https://www.bunnyshell.com)
+            
+            See: [Environment Details](https://environments.bunnyshell.com/b/environment/${{ env.BNS_ENV_ID }})
+  
+            Available commands:
+            - :rocket: `/bns:deploy` to redeploy the environment
+            - :x: `/bns:delete` to remove the environment
+          comment_tag: bunnyshell-preview-env
+          pr_number: ${{ inputs.pr-number }}
       - name: Deploy Environment - trigger
         uses: addnab/docker-run-action@v3
-        if: "${{ env.BNS_ENV_ID != '' }}"
+        if: "${{ env.BNS_ENV_ID != '' && !fromJSON(inputs.create-no-deploy) }}"
         with:
           image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
           options: >
@@ -239,7 +257,7 @@ jobs:
             fi
       - name: Comment with PR Environment deploying
         uses: thollander/actions-comment-pull-request@v2
-        if: "${{ env.BNS_ENV_ID != '' }}"
+        if: "${{ env.BNS_ENV_ID != '' && !fromJSON(inputs.create-no-deploy) }}"
         with:
           message: |
             ### :rocket: Preview Environment is deploying on [Bunnyshell](https://www.bunnyshell.com)...
@@ -249,7 +267,7 @@ jobs:
           pr_number: ${{ inputs.pr-number }}
       - name: Deploy Environment - wait to finish
         uses: addnab/docker-run-action@v3
-        if: "${{ env.BNS_ENV_ID != '' }}"
+        if: "${{ env.BNS_ENV_ID != '' && !fromJSON(inputs.create-no-deploy) }}"
         with:
           image: bunnyshell/cli:${{ inputs.bunnyshell-cli-version }}
           options: >
@@ -277,7 +295,7 @@ jobs:
             echo ":white_check_mark: Environment deployed successfully" >> /github/step_summary.txt
       - name: Comment with PR Environment deployed
         uses: thollander/actions-comment-pull-request@v2
-        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && (true || !inputs.deploy-as-stopped) }}
+        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && (true || !inputs.deploy-as-stopped) && !fromJSON(inputs.create-no-deploy) }}
         with:
           message: |
             ### :white_check_mark: Preview Environment deployed on [Bunnyshell](https://www.bunnyshell.com)
@@ -295,7 +313,7 @@ jobs:
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Comment with PR Environment deployment failed
-        if: ${{ failure() && inputs.comment-on-pr }}
+        if: ${{ failure() && inputs.comment-on-pr && !fromJSON(inputs.create-no-deploy) }}
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
@@ -311,21 +329,28 @@ jobs:
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Evaluate "deploy-as-stopped" option
+        if: ${{ !fromJSON(inputs.create-no-deploy) }}
         run: |
           deploy_as_stopped="${{ inputs.deploy-as-stopped }}"
-          
-          if [ "$deploy_as_stopped" = "true" ]; then
-            echo 'Environment will be stopped (see `deploy-as-stopped` option)'
-            echo ':speech_balloon: Environment will be stopped (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+          create_no_deploy="${{ inputs.create-no-deploy }}"
+
+          if [ "$create_no_deploy" = "true"]; then
+            echo 'Environment will not be deployed (see `create-no-deploy` option)'
+            echo ':speech_balloon: Environment will not be deployed (see `create-no-deploy` option)' >> $GITHUB_STEP_SUMMARY
           else
-            echo 'Environment will remain running (see `deploy-as-stopped` option)'
-            echo ':speech_balloon: Environment will remain running (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+            if [ "$deploy_as_stopped" = "true" ]; then
+              echo 'Environment will be stopped (see `deploy-as-stopped` option)'
+              echo ':speech_balloon: Environment will be stopped (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+            else
+              echo 'Environment will remain running (see `deploy-as-stopped` option)'
+              echo ':speech_balloon: Environment will remain running (see `deploy-as-stopped` option)' >> $GITHUB_STEP_SUMMARY
+            fi
           fi
   stop:
     name: Stop Environment
     runs-on: ${{ inputs.runs-on }}
     needs: deploy
-    if: ${{ false && inputs.deploy-as-stopped }}
+    if: ${{ false && inputs.deploy-as-stopped && !fromJSON(inputs.create-no-deploy) }}
     steps:
       - name: Stop Environment
         id: stop-trigger
