@@ -333,7 +333,7 @@ jobs:
           deploy_as_stopped="${{ inputs.deploy-as-stopped }}"
           create_no_deploy="${{ inputs.create-no-deploy }}"
 
-          if [ "$create_no_deploy" = "true"]; then
+          if [ "$create_no_deploy" = "true" ]; then
             echo 'Environment will not be deployed (see `create-no-deploy` option)'
             echo ':speech_balloon: Environment will not be deployed (see `create-no-deploy` option)' >> $GITHUB_STEP_SUMMARY
           else
