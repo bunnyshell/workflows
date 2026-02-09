@@ -329,7 +329,6 @@ jobs:
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Evaluate "deploy-as-stopped" option
-        if: ${{ !fromJSON(inputs.create-no-deploy) }}
         run: |
           deploy_as_stopped="${{ inputs.deploy-as-stopped }}"
           create_no_deploy="${{ inputs.create-no-deploy }}"
