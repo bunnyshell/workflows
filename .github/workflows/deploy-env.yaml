@@ -74,10 +74,10 @@ jobs:
     steps:
       - name: Comment with PR Environment will be deployed
         uses: thollander/actions-comment-pull-request@v2
-        if: ${{ inputs.pr-number != '' }}
+        if: ${{ inputs.pr-number != '' && !fromJSON(inputs.create-no-deploy) }}
         with:
           message: |
-            ${{ fromJSON(inputs.create-no-deploy) && '### :rocket: Preview Environment will be created on [Bunnyshell](https://www.bunnyshell.com)' || '### :rocket: Preview Environment will be deployed on [Bunnyshell](https://www.bunnyshell.com)' }}
+            ### :rocket: Preview Environment will be deployed on [Bunnyshell](https://www.bunnyshell.com)
           comment_tag: bunnyshell-preview-env
           pr_number: ${{ inputs.pr-number }}
       - name: Decrypt bunnyshell.yaml
@@ -191,7 +191,7 @@ jobs:
             echo ":white_check_mark: Environment definition updated" >> /github/step_summary.txt
       - name: Comment with PR Environment created
         uses: thollander/actions-comment-pull-request@v2
-        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && fromJSON(inputs.create-no-deploy) }}
+        if: ${{ env.BNS_ENV_ID != '' && inputs.comment-on-pr && fromJSON(inputs.create-no-deploy) && env.BNS_ENV_CREATED != '' }}
         with:
           message: |
             ### :white_check_mark: Preview Environment created on [Bunnyshell](https://www.bunnyshell.com)
